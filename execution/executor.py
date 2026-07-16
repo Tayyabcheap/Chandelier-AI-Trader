@@ -34,11 +34,8 @@ class TradeExecutor:
         if signal.direction == "HOLD":
             return None
 
-        if signal.confidence < self.settings.MIN_CONFIDENCE:
-            logger.info(
-                f"Skip {signal.symbol}: conf {signal.confidence}% < "
-                f"min {self.settings.MIN_CONFIDENCE}%"
-            )
+        if signal.confidence <= 0:
+            logger.info(f"Skip {signal.symbol}: confidence is {signal.confidence}% (vetoed or invalid)")
             return None
 
         can, reason = self.risk_manager.can_trade()

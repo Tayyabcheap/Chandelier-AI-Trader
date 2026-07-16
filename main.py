@@ -180,8 +180,7 @@ def main():
     if gemini_advisor:   filters_active.append("Gemini-AI")
 
     logger.info(
-        f"Watching: {settings.SYMBOLS} | TF: {settings.TIMEFRAME} | "
-        f"Min confidence: {settings.MIN_CONFIDENCE}%"
+        f"Watching: {settings.SYMBOLS} | TF: {settings.TIMEFRAME}"
     )
     logger.info(f"Active filters: {' -> '.join(filters_active)}")
 
