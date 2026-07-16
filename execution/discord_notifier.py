@@ -114,27 +114,17 @@ class DiscordNotifier:
             extra_info += f"**Session:** {signal.session}\n"
 
         fields = [
-            {"name": "Entry", "value": f"`{signal.entry:.5f}`", "inline": True},
-            {"name": "Stop Loss", "value": f"`{signal.stop_loss:.5f}`", "inline": True},
-            {"name": "Take Profit", "value": f"`{signal.take_profit:.5f}`", "inline": True},
-            {"name": "Lot Size", "value": f"`{lot}`", "inline": True},
-            {"name": "Confidence", "value": f"`{signal.confidence}%`", "inline": True},
-            {"name": "Risk", "value": f"`{signal.risk_level}`", "inline": True},
-            {"name": "RSI / ATR", "value": f"`{signal.rsi:.1f}` / `{signal.atr:.5f}`", "inline": True},
-            {"name": "Ticket", "value": f"`#{ticket}`", "inline": True},
-            {"name": "Daily P&L", "value": f"`{daily_pnl:+.2f}%`", "inline": True},
+            {"name": "🎯 Order Details", "value": f"**Entry:** `{signal.entry:.5f}`\n**SL:** `{signal.stop_loss:.5f}`\n**TP:** `{signal.take_profit:.5f}`", "inline": True},
+            {"name": "⚖️ Risk Profile", "value": f"**Lot:** `{lot}`\n**Risk:** `{signal.risk_level}`\n**P&L:** `{daily_pnl:+.2f}%`", "inline": True},
+            {"name": "📊 Market State", "value": f"**Regime:** `{signal.regime}`\n**Ticket:** `#{ticket}`", "inline": True},
         ]
 
         desc = f"{reasons_str}"
         if extra_info:
             desc += f"\n\n{extra_info}"
 
-        ml_str = ""
-        if signal.ml_active:
-            ml_str = f" | ML: {signal.ml_win_prob*100:.0f}%"
-
         self.send_embed(
-            title=f"{d_emoji} {signal.direction} {signal.symbol}{ml_str}",
+            title=f"{d_emoji} EXECUTED: {signal.direction} {signal.symbol}",
             description=desc,
             color=color,
             fields=fields,

@@ -9,3 +9,4 @@ python-dotenv>=1.0.0
 colorama>=0.4.6
 schedule>=1.2.0
 google-generativeai>=0.8.0
+customtkinter>=5.2.0

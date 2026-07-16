@@ -56,14 +56,28 @@ executor  = None
 
 def graceful_shutdown(sig=None, frame=None):
     global running
-    print("\n")
-    logger.info("Shutting down gracefully...")
+    print("\nShutting down gracefully...")
     running = False
-
 
 signal.signal(signal.SIGINT,  graceful_shutdown)
 signal.signal(signal.SIGTERM, graceful_shutdown)
 
+def close_all_open_trades():
+    """Emergency callback from GUI to flatten all positions."""
+    if not connector:
+        print("Connector not initialized.")
+        return
+    
+    positions = connector.get_open_positions()
+    if not positions:
+        print("No open positions to close.")
+        return
+        
+    for pos in positions:
+        ticket = pos["ticket"]
+        print(f"Closing position #{ticket}...")
+        connector.mt5.Close(symbol=pos["symbol"], ticket=ticket)
+    print("All positions closed.")
 
 def trading_cycle(conn, engine, risk_mgr, exec_, news_filter):
     global signals
@@ -201,27 +215,29 @@ def main():
     # First cycle immediately
     trading_cycle(connector, engine, risk_mgr, executor, news_filter)
 
-    # Main loop
+    # Main loop (Run in background thread by GUI)
     while running:
         schedule.run_pending()
-        try:
-            gemini_stats = gemini_advisor.get_stats() if gemini_advisor else None
-            render(
-                symbols        = settings.SYMBOLS,
-                account        = connector.get_account_info(),
-                daily_summary  = risk_mgr.get_daily_summary(),
-                open_positions = connector.get_open_positions(),
-                recent_trades  = executor.get_trade_history(),
-                signals        = signals,
-                gemini_stats   = gemini_stats,
-            )
-        except Exception as e:
-            logger.error(f"Dashboard error: {e}")
-        time.sleep(30)
+        time.sleep(1)
 
-    logger.info("Bot stopped. Open positions remain active in MT5.")
+    logger.info("Bot thread stopped.")
     connector.disconnect()
 
+def start_bot_thread():
+    global running
+    running = True
+    # main() will run the infinite schedule loop
+    main()
+
+def stop_bot_thread():
+    global running
+    running = False
 
 if __name__ == "__main__":
-    main()
+    # Import here to avoid circular imports during startup
+    from dashboard.gui_app import run_dashboard
+    
+    print("Launching Exness AutoTrader GUI...")
+    # The GUI runs on the main thread. 
+    # It will spawn start_bot_thread in the background when "START" is clicked.
+    run_dashboard(start_cb=start_bot_thread, stop_cb=stop_bot_thread, close_cb=close_all_open_trades)

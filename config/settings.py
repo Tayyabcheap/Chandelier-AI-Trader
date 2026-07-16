@@ -4,7 +4,7 @@ Loads and validates all configuration from .env
 """
 
 import os
-from dotenv import load_dotenv
+from dotenv import load_dotenv, set_key
 from pathlib import Path
 
 # Load .env from project root
@@ -94,5 +94,27 @@ class Settings:
             raise ValueError("Configuration errors:\n" + "\n".join(f"  - {e}" for e in errors))
         return True
 
+    @classmethod
+    def update_setting(cls, key: str, value: str, cast_type=str):
+        """Update live memory and rewrite to .env file."""
+        # 1. Update live attribute
+        if hasattr(cls, key):
+            try:
+                # Handle special boolean parsing
+                if cast_type == bool:
+                    cast_val = str(value).lower() == "true"
+                elif cast_type == list:
+                    cast_val = [s.strip() for s in str(value).split(",") if s.strip()]
+                else:
+                    cast_val = cast_type(value)
+                setattr(cls, key, cast_val)
+            except Exception as e:
+                print(f"Failed to cast {key}: {e}")
+                
+        # 2. Update .env file
+        try:
+            set_key(str(env_path), key, str(value))
+        except Exception as e:
+            print(f"Failed to save {key} to .env: {e}")
 
 settings = Settings()
