@@ -129,14 +129,24 @@ class MT5Connector:
         tf = self._resolve_tf(timeframe)
         mt5.symbol_select(symbol, True)  # Ensure symbol is active in Market Watch
         rates = mt5.copy_rates_from_pos(symbol, tf, 0, count)
+        
         if rates is None or len(rates) == 0:
             code, msg = mt5.last_error()
-            logger.error(
-                f"No candle data for {symbol} @ {timeframe} [{code}]: {msg}\n"
-                f"  Tip: Check symbol name in MT5 Market Watch. "
-                f"Some Exness accounts use 'EURUSDm' not 'EURUSD'."
-            )
-            return None
+            
+            # If IPC is broken, try to auto-reconnect silently
+            if code == -1:
+                logger.warning(f"MT5 IPC broken (code -1). Attempting auto-reconnect...")
+                mt5.shutdown()
+                time.sleep(1)
+                self.connect(retries=1)
+                rates = mt5.copy_rates_from_pos(symbol, tf, 0, count)
+                
+            if rates is None or len(rates) == 0:
+                logger.error(
+                    f"No candle data for {symbol} @ {timeframe} [{code}]: {msg}\n"
+                    f"  Tip: Check MT5 connection to broker (bottom right corner in MT5)."
+                )
+                return None
 
         df = pd.DataFrame(rates)
         df["time"] = pd.to_datetime(df["time"], unit="s")
