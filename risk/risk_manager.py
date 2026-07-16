@@ -103,11 +103,20 @@ class RiskManager:
 
     # ── Position Sizing ───────────────────────────────────────────────────────
 
-    def calculate_lot(self, symbol: str, sl_distance: float) -> float:
+    def calculate_lot(self, symbol: str, sl_distance: float, risk_level: str = "MEDIUM") -> float:
         try:
             info        = self.connector.get_account_info()
             balance     = info["balance"]
-            risk_amount = balance * (self.settings.RISK_PER_TRADE_PCT / 100)
+            
+            # Dynamic risk based on Gemini AI confidence
+            if risk_level == "LOW":      # Gemini Rating 8-10
+                risk_pct = 2.0
+            elif risk_level == "MEDIUM": # Gemini Rating 4-7
+                risk_pct = 1.0
+            else:                        # Gemini Rating 1-3 (HIGH risk)
+                risk_pct = 0.5
+                
+            risk_amount = balance * (risk_pct / 100)
             sym_info    = self.connector.get_symbol_info(symbol)
             point       = sym_info.get("point", 0.00001)
             tick_val    = sym_info.get("trade_tick_value", 1.0)

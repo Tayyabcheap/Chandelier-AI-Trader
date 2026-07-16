@@ -44,7 +44,7 @@ class TradeExecutor:
             return None
 
         sl_distance = abs(signal.entry - signal.stop_loss)
-        lot         = self.risk_manager.calculate_lot(signal.symbol, sl_distance)
+        lot         = self.risk_manager.calculate_lot(signal.symbol, sl_distance, signal.risk_level)
         daily       = self.risk_manager.get_daily_summary()
         pnl_before  = daily["pnl_pct"]
 
