@@ -1,0 +1,228 @@
+"""
+main.py - Exness AutoTrader v2.0 Entry Point
+===============================================================
+Next-generation forex bot with 6-layer trade filtering:
+  1. Rule-based indicators (EMA + RSI + MACD + BB + Stoch + Vol)
+  2. ADX Market Regime Filter
+  3. Multi-Timeframe Confirmation (H4)
+  4. Session Filter (optimal trading hours)
+  5. Self-Learning ML Model (ensemble)
+  6. Gemini AI Advisor (human-like trade review)
+
+Run:  python main.py
+Stop: Ctrl+C  (open trades stay in MT5)
+===============================================================
+"""
+
+import ssl
+
+# Fix for Windows Server SSL certificate verification errors on webhooks/APIs
+try:
+    _create_unverified_https_context = ssl._create_unverified_context
+except AttributeError:
+    pass
+else:
+    ssl._create_default_https_context = _create_unverified_https_context
+
+import sys
+import os
+import time
+import signal
+import schedule
+from datetime import datetime
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from config.settings import settings
+from core.logger import get_logger
+from core.mt5_connector import MT5Connector
+from strategy.indicators import add_indicators
+from strategy.signal_engine import SignalEngine
+from strategy.regime_filter import RegimeFilter
+from strategy.session_filter import SessionFilter
+from strategy.gemini_advisor import GeminiAdvisor
+from risk.risk_manager import RiskManager
+from risk.news_filter import NewsFilter
+from execution.executor import TradeExecutor
+from execution.discord_notifier import DiscordNotifier
+from dashboard.terminal_dashboard import render
+
+logger  = get_logger("Main")
+running = True
+signals = {}
+connector = None
+executor  = None
+
+
+def graceful_shutdown(sig=None, frame=None):
+    global running
+    print("\n")
+    logger.info("Shutting down gracefully...")
+    running = False
+
+
+signal.signal(signal.SIGINT,  graceful_shutdown)
+signal.signal(signal.SIGTERM, graceful_shutdown)
+
+
+def trading_cycle(conn, engine, risk_mgr, exec_, news_filter):
+    global signals
+    for symbol in settings.SYMBOLS:
+        try:
+            # News filter
+            safe, reason = news_filter.is_safe_to_trade(symbol)
+            if not safe:
+                logger.info(f"[{symbol}] News pause: {reason}")
+                continue
+
+            # Fetch data
+            df = conn.get_candles(symbol, settings.TIMEFRAME, count=500)
+            if df is None or len(df) < 50:
+                logger.warning(f"[{symbol}] Not enough data")
+                continue
+
+            # Generate signal (all 6 layers run inside engine.analyze)
+            sig = engine.analyze(df, symbol)
+            signals[symbol] = sig
+
+            # Execute
+            exec_.execute(sig)
+
+            # Check for closed positions (ML feedback)
+            exec_.check_closed_positions()
+
+        except Exception as e:
+            logger.error(f"[{symbol}] Cycle error: {e}", exc_info=True)
+
+
+def main():
+    global connector, executor
+
+    print("\n" + "="*60)
+    print("  * Exness AutoTrader v2.0 - Next-Gen AI-Powered")
+    print("  6-Layer Filter: Rules -> ADX -> H4 -> Session -> ML -> Gemini")
+    print("="*60 + "\n")
+
+    # Validate config
+    try:
+        settings.validate()
+    except ValueError as e:
+        logger.error(str(e))
+        logger.error("Fill in config/.env with your MT5 credentials.")
+        sys.exit(1)
+
+    # Connect to MT5
+    connector = MT5Connector(
+        login    = settings.MT5_LOGIN,
+        password = settings.MT5_PASSWORD,
+        server   = settings.MT5_SERVER,
+        path     = settings.MT5_PATH,
+    )
+    if not connector.connect():
+        sys.exit(1)
+
+    # -- Init all components -----------------------------------------------
+
+    # Layer 2: ADX Regime Filter
+    regime_filter = None
+    if settings.ADX_FILTER_ENABLED:
+        regime_filter = RegimeFilter(min_adx=settings.ADX_MIN_TREND)
+        logger.info(f"? ADX Regime Filter active (min ADX: {settings.ADX_MIN_TREND})")
+    else:
+        logger.info("? ADX Regime Filter disabled")
+
+    # Layer 4: Session Filter
+    session_filter = None
+    if settings.SESSION_FILTER_ENABLED:
+        session_filter = SessionFilter(enabled=True)
+        logger.info(f"? Session Filter active ({session_filter.get_session_info()})")
+    else:
+        logger.info("? Session Filter disabled")
+
+    # Layer 6: Gemini AI Advisor
+    gemini_advisor = None
+    if settings.GEMINI_ENABLED and settings.GEMINI_API_KEY:
+        gemini_advisor = GeminiAdvisor(
+            api_key=settings.GEMINI_API_KEY,
+            model_name=settings.GEMINI_MODEL,
+        )
+        if gemini_advisor.enabled:
+            logger.info(f"? Gemini AI Advisor active (model: {settings.GEMINI_MODEL})")
+        else:
+            logger.info("? Gemini AI Advisor failed to initialize")
+            gemini_advisor = None
+    else:
+        logger.info("? Gemini AI Advisor disabled (no API key)")
+
+    engine = SignalEngine(
+        settings,
+        regime_filter  = regime_filter,
+        session_filter = session_filter,
+        gemini_advisor = gemini_advisor,
+        connector      = connector,
+    )
+
+    risk_mgr    = RiskManager(settings, connector)
+    news_filter = NewsFilter(settings)
+    discord     = DiscordNotifier(settings)
+    executor    = TradeExecutor(settings, connector, risk_mgr,
+                                notifier=None,
+                                discord=discord)
+
+    risk_mgr.initialize_day()
+    account = connector.get_account_info()
+    discord.send_startup(settings.SYMBOLS, account["balance"], account["currency"])
+
+    # Print active filters summary
+    filters_active = []
+    if regime_filter:    filters_active.append("ADX")
+    if session_filter:   filters_active.append("Session")
+    if gemini_advisor:   filters_active.append("Gemini-AI")
+
+    logger.info(
+        f"Watching: {settings.SYMBOLS} | TF: {settings.TIMEFRAME} | "
+        f"Min confidence: {settings.MIN_CONFIDENCE}%"
+    )
+    logger.info(f"Active filters: {' -> '.join(filters_active)}")
+
+    # -- Schedules ---------------------------------------------------------
+    schedule.every(1).minutes.do(
+        trading_cycle, connector, engine, risk_mgr, executor, news_filter
+    )
+    schedule.every(1).minutes.do(risk_mgr.update_trailing_stops)
+    schedule.every().day.at("00:01").do(risk_mgr.initialize_day)
+    schedule.every().day.at("23:50").do(
+        lambda: (
+            discord.send_daily_summary(
+                risk_mgr.get_daily_summary(), connector.get_account_info()
+            )
+        )
+    )
+
+    # First cycle immediately
+    trading_cycle(connector, engine, risk_mgr, executor, news_filter)
+
+    # Main loop
+    while running:
+        schedule.run_pending()
+        try:
+            gemini_stats = gemini_advisor.get_stats() if gemini_advisor else None
+            render(
+                symbols        = settings.SYMBOLS,
+                account        = connector.get_account_info(),
+                daily_summary  = risk_mgr.get_daily_summary(),
+                open_positions = connector.get_open_positions(),
+                recent_trades  = executor.get_trade_history(),
+                signals        = signals,
+                gemini_stats   = gemini_stats,
+            )
+        except Exception as e:
+            logger.error(f"Dashboard error: {e}")
+        time.sleep(30)
+
+    logger.info("Bot stopped. Open positions remain active in MT5.")
+    connector.disconnect()
+
+
+if __name__ == "__main__":
+    main()
