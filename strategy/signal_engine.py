@@ -104,21 +104,20 @@ class SignalEngine:
             return TradeSignal(symbol=symbol, direction="HOLD", confidence=0, reasons=["No Chandelier Trend"], risk_level="HIGH")
 
         # ══ Layer 2: ADX Regime Filter ═══════════════════════════════════
-        regime_data = {"regime": "UNKNOWN", "adx": ind.get("adx", 0)}
+        regime_data = {"regime": "UNKNOWN", "adx": 0.0}
         if self.regime_filter and self.settings.ADX_FILTER_ENABLED:
-            # We want ADX > ADX_MIN_TREND. We don't care about DI for Chandelier since Chandelier handles direction.
-            adx_val = float(ind.get("adx", 0))
+            regime_data = self.regime_filter.analyze(df, symbol)
+            adx_val = float(regime_data.get("adx", 0))
+            
             if adx_val < self.settings.ADX_MIN_TREND:
                 logger.info(f"[{symbol}] ADX filter blocked (ADX {adx_val:.0f} < {self.settings.ADX_MIN_TREND})")
                 return TradeSignal(
                     symbol=symbol, direction="HOLD", confidence=0,
                     reasons=[f"⏸ Sideways Market: ADX {adx_val:.0f}"], risk_level="HIGH",
                     timestamp=candle_time, indicators=ind,
-                    regime="RANGING", adx=adx_val
+                    regime=regime_data["regime"], adx=adx_val
                 )
             reasons.append(f"ADX Trending (ADX {adx_val:.0f} > {self.settings.ADX_MIN_TREND})")
-            regime_data["regime"] = "TRENDING"
-            regime_data["adx"] = adx_val
 
         # ══ Layer 3: Session Filter ══════════════════════════════════════
         session_info = ""
