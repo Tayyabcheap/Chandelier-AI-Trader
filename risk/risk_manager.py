@@ -109,11 +109,11 @@ class RiskManager:
             balance     = info["balance"]
             
             # Dynamic risk based on Gemini AI confidence
-            if risk_level == "LOW":      # Gemini Rating 8-10
-                risk_pct = 2.0
+            if risk_level == "LOW":      # Gemini Rating 8-10 (High Confidence = High Risk %)
+                risk_pct = self.settings.GEMINI_HIGH_RISK_PCT
             elif risk_level == "MEDIUM": # Gemini Rating 4-7
-                risk_pct = 1.0
-            else:                        # Gemini Rating 1-3 (HIGH risk)
+                risk_pct = self.settings.GEMINI_MEDIUM_RISK_PCT
+            else:                        # Gemini Rating 1-3 (Blocked by engine, fallback 0.5)
                 risk_pct = 0.5
                 
             risk_amount = balance * (risk_pct / 100)

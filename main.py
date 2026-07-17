@@ -233,11 +233,19 @@ def stop_bot_thread():
     global running
     running = False
 
+def get_gui_data():
+    """Returns live connector and signals for the GUI to poll."""
+    global connector, signals
+    return connector, signals
+
 if __name__ == "__main__":
     # Import here to avoid circular imports during startup
     from dashboard.gui_app import run_dashboard
     
     print("Launching Exness AutoTrader GUI...")
-    # The GUI runs on the main thread. 
-    # It will spawn start_bot_thread in the background when "START" is clicked.
-    run_dashboard(start_cb=start_bot_thread, stop_cb=stop_bot_thread, close_cb=close_all_open_trades)
+    run_dashboard(
+        start_cb=start_bot_thread, 
+        stop_cb=stop_bot_thread, 
+        close_cb=close_all_open_trades,
+        data_cb=get_gui_data
+    )

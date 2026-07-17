@@ -61,9 +61,11 @@ class Settings:
     NEWS_PAUSE_MINUTES  = _get("NEWS_PAUSE_MINUTES", 30, int)
 
     # Gemini AI Advisor
-    GEMINI_API_KEY     = _get("GEMINI_API_KEY")
-    GEMINI_MODEL       = _get("GEMINI_MODEL", "gemini-2.0-flash")
-    GEMINI_ENABLED     = _get("GEMINI_ENABLED", "true").lower() == "true"
+    GEMINI_API_KEY         = _get("GEMINI_API_KEY")
+    GEMINI_MODEL           = _get("GEMINI_MODEL", "gemini-2.0-flash")
+    GEMINI_ENABLED         = _get("GEMINI_ENABLED", "true").lower() == "true"
+    GEMINI_HIGH_RISK_PCT   = _get("GEMINI_HIGH_RISK_PCT", 2.0, float)
+    GEMINI_MEDIUM_RISK_PCT = _get("GEMINI_MEDIUM_RISK_PCT", 1.0, float)
 
     # Session Filter
     SESSION_FILTER_ENABLED = _get("SESSION_FILTER_ENABLED", "true").lower() == "true"
