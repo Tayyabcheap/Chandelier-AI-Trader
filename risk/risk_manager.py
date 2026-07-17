@@ -151,6 +151,7 @@ class RiskManager:
             ticket     = pos.get("ticket", 0)
             pos_type   = pos.get("type", 0)
             current_sl = pos.get("sl", 0.0)
+            current_tp = pos.get("tp", 0.0)
 
             df = self.connector.get_candles(symbol, s.TIMEFRAME, 50)
             if df is None:
@@ -168,12 +169,12 @@ class RiskManager:
             if pos_type == 0:  # BUY
                 new_sl = round(price - trail_dist, 5)
                 if new_sl > current_sl:
-                    if self.connector.modify_trailing_stop(ticket, new_sl):
+                    if self.connector.modify_trailing_stop(ticket, symbol, new_sl, current_tp):
                         logger.info(f"Trail raised #{ticket} {symbol}: {current_sl:.5f}→{new_sl:.5f}")
             else:  # SELL
                 new_sl = round(price + trail_dist, 5)
                 if new_sl < current_sl or current_sl == 0:
-                    if self.connector.modify_trailing_stop(ticket, new_sl):
+                    if self.connector.modify_trailing_stop(ticket, symbol, new_sl, current_tp):
                         logger.info(f"Trail lowered #{ticket} {symbol}: {current_sl:.5f}→{new_sl:.5f}")
 
     def register_trade(self):

@@ -139,19 +139,22 @@ class SignalEngine:
         atr   = ind["atr"]
         price = ind["close"]
 
-        # Use Chandelier line directly as SL, or fallback to ATR trail if Chandelier is too tight
+        # Use Chandelier line directly as SL, or fallback to ATR trail if Chandelier is invalid/tight
         if rule_dir == "BUY":
             stop_loss = ind["chandelier_long"]
-            # Enforce minimum distance just in case
-            if price - stop_loss < atr * 0.5:
-                stop_loss = price - atr * 1.5
-            sl_dist = price - stop_loss
+            # If SL is above price (invalid) or too tight
+            if stop_loss >= price or (price - stop_loss) < (atr * 0.5):
+                stop_loss = price - (atr * 1.5)
+            
+            sl_dist = abs(price - stop_loss)
             take_profit = round(price + (sl_dist * 2.0), 5)  # 1:2 R:R
         else:
             stop_loss = ind["chandelier_short"]
-            if stop_loss - price < atr * 0.5:
-                stop_loss = price + atr * 1.5
-            sl_dist = stop_loss - price
+            # If SL is below price (invalid) or too tight
+            if stop_loss <= price or (stop_loss - price) < (atr * 0.5):
+                stop_loss = price + (atr * 1.5)
+                
+            sl_dist = abs(stop_loss - price)
             take_profit = round(price - (sl_dist * 2.0), 5)  # 1:2 R:R
 
         # Default confidence before Gemini

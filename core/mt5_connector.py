@@ -233,10 +233,16 @@ class MT5Connector:
 
         return {"ticket": result.order, "retcode": result.retcode, "comment": result.comment}
 
-    def modify_trailing_stop(self, ticket: int, new_sl: float) -> bool:
+    def modify_trailing_stop(self, ticket: int, symbol: str, new_sl: float, current_tp: float) -> bool:
         if not MT5_AVAILABLE:
             return True
-        request = {"action": mt5.TRADE_ACTION_SLTP, "position": ticket, "sl": new_sl}
+        request = {
+            "action": mt5.TRADE_ACTION_SLTP, 
+            "position": ticket, 
+            "symbol": symbol,
+            "sl": new_sl, 
+            "tp": current_tp
+        }
         result  = mt5.order_send(request)
         return result is not None and result.retcode == mt5.TRADE_RETCODE_DONE
 
