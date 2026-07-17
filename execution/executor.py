@@ -79,8 +79,8 @@ class TradeExecutor:
             "take_profit":  signal.take_profit,
             "lot":          lot,
             "ticket":       ticket,
-            "ml_active":    signal.ml_active,
-            "ml_win_prob":  signal.ml_win_prob,
+            "ml_active":    getattr(signal, "ml_active", False),
+            "ml_win_prob":  getattr(signal, "ml_win_prob", 0.0),
             "reasons":      " | ".join(signal.reasons),
             "daily_pnl_before": pnl_before,
         }

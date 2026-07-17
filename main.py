@@ -76,7 +76,7 @@ def close_all_open_trades():
     for pos in positions:
         ticket = pos["ticket"]
         print(f"Closing position #{ticket}...")
-        connector.mt5.Close(symbol=pos["symbol"], ticket=ticket)
+        connector.close_position(ticket)
     print("All positions closed.")
 
 def trading_cycle(conn, engine, risk_mgr, exec_, news_filter):
