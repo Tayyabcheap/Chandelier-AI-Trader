@@ -208,14 +208,22 @@ class SignalEngine:
             # Use rating (1-10) for risk level and confidence
             signal.gemini_decision = f"RATE:{rating}/10"
             signal.confidence = rating * 10
+            
+            # Reject weak setups outright
+            if rating <= 4:
+                logger.info(f"[{symbol}] Gemini AI rated {rating}/10 (<= 4). Trade REJECTED.")
+                signal.direction = "HOLD"
+                signal.confidence = 0
+                signal.reasons = [f"🤖 Gemini Rated {rating}/10 — Too weak, trade rejected."]
+                signal.gemini_decision = f"REJECT:{rating}/10"
+                return signal
+
             signal.reasons.append(f"🤖 Gemini Rated {rating}/10: {reasoning}")
 
             if rating >= 8:
-                signal.risk_level = "LOW"     # means 2.0% risk (counter-intuitive but inherited from older risk_manager logic where low risk = high confidence = larger size)
-            elif rating >= 4:
-                signal.risk_level = "MEDIUM"  # 1.0% risk
+                signal.risk_level = "LOW"     # means 2.0% risk (high confidence)
             else:
-                signal.risk_level = "HIGH"    # 0.5% risk
+                signal.risk_level = "MEDIUM"  # 1.0% risk (standard confidence)
 
         if signal.direction != "HOLD":
             logger.info(f"\n{signal.summary()}")
