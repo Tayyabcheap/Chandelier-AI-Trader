@@ -76,7 +76,8 @@ class RiskManager:
         if self._state["stopped"]:
             return False, self._state["stop_reason"]
 
-        pnl = self._state["daily_pnl"]
+        # Update PnL first so we check against live equity
+        pnl = self.update_pnl()
         s   = self.settings
 
         if pnl >= s.DAILY_PROFIT_TARGET_PCT:

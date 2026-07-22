@@ -123,13 +123,13 @@ class ExnessDashboard(ctk.CTk):
         self.tabs = ctk.CTkTabview(self.right_frame)
         self.tabs.pack(fill="both", expand=True, padx=10, pady=10)
         
-        self.tab_inspector = self.tabs.add("AI Inspector")
+        self.tab_inspector = self.tabs.add("Latest AI Scan")
         self.tab_analytics = self.tabs.add("Performance Analytics")
         
         # --- Inspector Tab ---
         self.inspect_content = ctk.CTkTextbox(self.tab_inspector, font=("Consolas", 14), wrap="word", fg_color="transparent")
         self.inspect_content.pack(fill="both", expand=True, padx=10, pady=10)
-        self.inspect_content.insert("0.0", "Select an active trade from the center panel to inspect the AI reasoning.")
+        self.inspect_content.insert("0.0", "Click 'Inspect Logic' on a trade to see the LATEST market scan for that pair.\n\nNote: This shows the CURRENT live AI reasoning, not the historical reasoning from when the trade was opened.")
         self.inspect_content.configure(state="disabled")
 
         # --- Analytics Tab ---
@@ -235,7 +235,7 @@ class ExnessDashboard(ctk.CTk):
             inspect_btn.pack(side="right")
 
     def inspect_trade(self, symbol, signals):
-        self.tabs.set("AI Inspector")
+        self.tabs.set("Latest AI Scan")
         self.inspect_content.configure(state="normal")
         self.inspect_content.delete("0.0", "end")
         
@@ -245,7 +245,7 @@ class ExnessDashboard(ctk.CTk):
         else:
             ai_text = sig.gemini_reasoning if sig.gemini_reasoning else "No AI logic recorded."
             report = (
-                f"=== {symbol} ANALYSIS ===\n\n"
+                f"=== CURRENT LIVE {symbol} SCAN ===\n\n"
                 f"[ ALGORITHMIC FILTERS ]\n"
                 f"Chandelier Trend : {sig.direction}\n"
                 f"ADX Momentum     : {sig.adx:.1f}\n"
