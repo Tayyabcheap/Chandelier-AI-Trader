@@ -300,6 +300,33 @@ class MT5Connector:
             logger.error(f"get_deal_result error for #{ticket}: {e}")
             return 0.0, False
 
+    def get_all_closed_deals(self, days: int = 30) -> list:
+        """Fetch all closed deals in the last N days for Analytics."""
+        if not MT5_AVAILABLE:
+            return []
+        try:
+            from datetime import timedelta
+            now = datetime.now()
+            from_date = now - timedelta(days=days)
+            deals = mt5.history_deals_get(from_date, now)
+            if not deals:
+                return []
+            
+            # Filter for deals that actually closed a position (Entry OUT)
+            closed_deals = []
+            for d in deals:
+                if d.entry == mt5.DEAL_ENTRY_OUT and d.profit != 0:
+                    closed_deals.append({
+                        "ticket": d.ticket,
+                        "symbol": d.symbol,
+                        "profit": d.profit,
+                        "time": pd.to_datetime(d.time, unit="s")
+                    })
+            return closed_deals
+        except Exception as e:
+            logger.error(f"get_all_closed_deals error: {e}")
+            return []
+
     def get_spread(self, symbol: str) -> float:
         """
         Get current spread for a symbol in price units.

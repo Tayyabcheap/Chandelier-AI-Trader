@@ -33,6 +33,7 @@ class Settings:
 
     # Symbols & timeframe
     SYMBOLS          = [s.strip() for s in _get("SYMBOLS", "EURUSD").split(",") if s.strip()]
+    BLOCKED_SYMBOLS  = [s.strip() for s in _get("BLOCKED_SYMBOLS", "").split(",") if s.strip()]
     TIMEFRAME        = _get("TIMEFRAME", "H1")
 
     # Daily risk limits

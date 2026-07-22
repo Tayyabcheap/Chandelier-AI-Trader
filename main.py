@@ -83,6 +83,10 @@ def trading_cycle(conn, engine, risk_mgr, exec_, news_filter):
     global signals
     for symbol in settings.SYMBOLS:
         try:
+            # Blocklist filter
+            if symbol in settings.BLOCKED_SYMBOLS:
+                continue
+
             # News filter
             safe, reason = news_filter.is_safe_to_trade(symbol)
             if not safe:
