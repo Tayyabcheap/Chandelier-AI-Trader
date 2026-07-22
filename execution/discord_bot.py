@@ -11,18 +11,6 @@ from core.logger import get_logger
 import threading
 import os
 import certifi
-import ssl
-
-# Aggressive monkey-patch to force aiohttp/discord.py to bypass SSL verification
-orig_create_default_context = ssl.create_default_context
-
-def patched_create_default_context(*args, **kwargs):
-    ctx = orig_create_default_context(*args, **kwargs)
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-    return ctx
-
-ssl.create_default_context = patched_create_default_context
 
 logger = get_logger("DiscordBot")
 

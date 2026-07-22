@@ -16,13 +16,23 @@ Stop: Ctrl+C  (open trades stay in MT5)
 
 import ssl
 
-# Fix for Windows Server SSL certificate verification errors on webhooks/APIs
+# Aggressive global monkey-patch to force aiohttp/discord/urllib to bypass SSL verification
+# MUST happen BEFORE any other imports because aiohttp caches the SSL context on load!
+orig_create_default_context = ssl.create_default_context
+
+def patched_create_default_context(*args, **kwargs):
+    ctx = orig_create_default_context(*args, **kwargs)
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+ssl.create_default_context = patched_create_default_context
+
+# Also patch urllib's unverified context for legacy requests
 try:
-    _create_unverified_https_context = ssl._create_unverified_context
+    ssl._create_default_https_context = ssl._create_unverified_context
 except AttributeError:
     pass
-else:
-    ssl._create_default_https_context = _create_unverified_https_context
 
 import sys
 import os
