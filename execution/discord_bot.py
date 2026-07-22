@@ -9,6 +9,12 @@ import asyncio
 from config.settings import settings
 from core.logger import get_logger
 import threading
+import os
+import certifi
+
+# Force aiohttp (used by discord.py) to use certifi's CA bundle on Windows
+os.environ['SSL_CERT_FILE'] = certifi.where()
+os.environ['SSL_CERT_DIR'] = os.path.dirname(certifi.where())
 
 logger = get_logger("DiscordBot")
 
