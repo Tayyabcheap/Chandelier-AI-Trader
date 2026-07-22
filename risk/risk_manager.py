@@ -73,27 +73,18 @@ class RiskManager:
 
     def can_trade(self, symbol: str = None) -> Tuple[bool, str]:
         """Returns (allowed, reason_string). Python 3.9 compatible."""
-        if self._state["stopped"]:
-            return False, self._state["stop_reason"]
-
+        # Note: We evaluate PnL dynamically so user can change limits on the fly.
+        
         # Update PnL first so we check against live equity
         pnl = self.update_pnl()
         s   = self.settings
 
         if pnl >= s.DAILY_PROFIT_TARGET_PCT:
-            reason = f"Daily target reached: +{pnl:.2f}%"
-            self._state["stopped"]     = True
-            self._state["stop_reason"] = reason
-            self._save_state()
-            logger.info(f"Target hit — bot paused. {reason}")
+            reason = f"Daily target reached: +{pnl:.2f}% (Limit: {s.DAILY_PROFIT_TARGET_PCT}%)"
             return False, reason
 
         if pnl <= -s.DAILY_LOSS_LIMIT_PCT:
-            reason = f"Daily loss limit hit: {pnl:.2f}%"
-            self._state["stopped"]     = True
-            self._state["stop_reason"] = reason
-            self._save_state()
-            logger.warning(f"Loss limit hit — bot paused. {reason}")
+            reason = f"Daily loss limit hit: {pnl:.2f}% (Limit: -{s.DAILY_LOSS_LIMIT_PCT}%)"
             return False, reason
 
         open_pos = self.connector.get_open_positions()
