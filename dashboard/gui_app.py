@@ -168,18 +168,40 @@ class ExnessDashboard(ctk.CTk):
         if self.canvas_widget:
             self.canvas_widget.destroy()
 
-        fig = Figure(figsize=(5, 4), dpi=100, facecolor="#1a1a1a")
-        ax = fig.add_subplot(111)
-        ax.set_facecolor("#1a1a1a")
+        fig = Figure(figsize=(7, 6), dpi=100, facecolor="#1a1a1a")
         
-        ax.plot(df["time"], df["cumulative_profit"], color="#2ECC71" if df["cumulative_profit"].iloc[-1] >= 0 else "#E74C3C", linewidth=2)
+        # Subplot 1: Cumulative PnL Line Chart
+        ax1 = fig.add_subplot(211)
+        ax1.set_facecolor("#1a1a1a")
         
-        ax.set_title("30-Day Cumulative PnL ($)", color="white")
-        ax.tick_params(colors="white")
-        for spine in ax.spines.values():
-            spine.set_color("gray")
+        # Cyberpunk neon colors
+        line_color = "#00FFCC" if df["cumulative_profit"].iloc[-1] >= 0 else "#FF003C"
+        ax1.plot(df["time"], df["cumulative_profit"], color=line_color, linewidth=2)
+        
+        # Add cool shading under the line
+        ax1.fill_between(df["time"], df["cumulative_profit"], 0, where=(df["cumulative_profit"] >= 0), facecolor="#00FFCC", alpha=0.15)
+        ax1.fill_between(df["time"], df["cumulative_profit"], 0, where=(df["cumulative_profit"] < 0), facecolor="#FF003C", alpha=0.15)
+        
+        ax1.set_title("📈 30-Day Cumulative PnL ($)", color="white", fontweight="bold")
+        ax1.tick_params(colors="gray")
+        ax1.grid(color="#333333", linestyle="--", linewidth=0.5)
+
+        # Subplot 2: Profit by Pair Bar Chart
+        ax2 = fig.add_subplot(212)
+        ax2.set_facecolor("#1a1a1a")
+        if "symbol" in df.columns:
+            pair_profit = df.groupby("symbol")["profit"].sum()
+            bar_colors = ["#00FFCC" if p >= 0 else "#FF003C" for p in pair_profit]
+            ax2.bar(pair_profit.index, pair_profit.values, color=bar_colors, edgecolor="black")
+            ax2.set_title("📊 Net Profit by Pair ($)", color="white", fontweight="bold")
+            ax2.tick_params(colors="gray")
+            ax2.grid(color="#333333", linestyle="--", linewidth=0.5, axis="y")
             
-        fig.tight_layout()
+        for ax in [ax1, ax2]:
+            for spine in ax.spines.values():
+                spine.set_color("#444444")
+                
+        fig.tight_layout(pad=2.0)
 
         canvas = FigureCanvasTkAgg(fig, master=self.analytics_inner)
         canvas.draw()
