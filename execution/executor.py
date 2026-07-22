@@ -34,11 +34,11 @@ class TradeExecutor:
         if signal.direction == "HOLD":
             return None
 
-        if signal.confidence <= 0:
-            logger.info(f"Skip {signal.symbol}: confidence is {signal.confidence}% (vetoed or invalid)")
+        if signal.confidence < self.settings.MIN_GEMINI_CONFIDENCE:
+            logger.info(f"Skip {signal.symbol}: confidence is {signal.confidence}% (minimum is {self.settings.MIN_GEMINI_CONFIDENCE}%)")
             return None
 
-        can, reason = self.risk_manager.can_trade()
+        can, reason = self.risk_manager.can_trade(signal.symbol)
         if not can:
             logger.info(f"Trade blocked: {reason}")
             return None

@@ -245,8 +245,15 @@ def get_gui_data():
 if __name__ == "__main__":
     # Import here to avoid circular imports during startup
     from dashboard.gui_app import run_dashboard
+    from execution.discord_bot import run_discord_bot
     
     print("Launching Exness AutoTrader GUI...")
+
+    # Start Discord Interactive Bot in background
+    import threading
+    discord_thread = threading.Thread(target=run_discord_bot, args=(connector, settings), daemon=True)
+    discord_thread.start()
+
     run_dashboard(
         start_cb=start_bot_thread, 
         stop_cb=stop_bot_thread, 

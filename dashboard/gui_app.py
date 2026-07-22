@@ -80,11 +80,14 @@ class ExnessDashboard(ctk.CTk):
         
         self.profit_entry = self._make_input_row("Daily Profit Target", settings.DAILY_PROFIT_TARGET_PCT)
         self.loss_entry = self._make_input_row("Daily Loss Limit", settings.DAILY_LOSS_LIMIT_PCT)
+        self.max_trades_entry = self._make_input_row("Max Total Trades", settings.MAX_OPEN_TRADES)
+        self.max_per_pair_entry = self._make_input_row("Max Trades / Pair", settings.MAX_TRADES_PER_SYMBOL)
         
         ctk.CTkLabel(self.sidebar, text="Gemini AI Dynamic Risk (%)", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=20, pady=(20,5))
         
         self.high_risk_entry = self._make_input_row("High Confidence (8-10)", settings.GEMINI_HIGH_RISK_PCT)
         self.med_risk_entry = self._make_input_row("Medium Confidence (5-7)", settings.GEMINI_MEDIUM_RISK_PCT)
+        self.min_conf_entry = self._make_input_row("Minimum AI Rating", settings.MIN_GEMINI_CONFIDENCE)
 
         self.save_btn = ctk.CTkButton(self.sidebar, text="Save Config", command=self.save_settings, fg_color="transparent", border_width=2)
         self.save_btn.pack(fill="x", padx=20, pady=(30, 20))
@@ -269,8 +272,11 @@ class ExnessDashboard(ctk.CTk):
             # Save Risk Limits
             settings.update_setting("DAILY_PROFIT_TARGET_PCT", self.profit_entry.get(), float)
             settings.update_setting("DAILY_LOSS_LIMIT_PCT", self.loss_entry.get(), float)
+            settings.update_setting("MAX_OPEN_TRADES", self.max_trades_entry.get(), int)
+            settings.update_setting("MAX_TRADES_PER_SYMBOL", self.max_per_pair_entry.get(), int)
             settings.update_setting("GEMINI_HIGH_RISK_PCT", self.high_risk_entry.get(), float)
             settings.update_setting("GEMINI_MEDIUM_RISK_PCT", self.med_risk_entry.get(), float)
+            settings.update_setting("MIN_GEMINI_CONFIDENCE", self.min_conf_entry.get(), int)
             
             # Save Blocked Symbols
             blocked = []

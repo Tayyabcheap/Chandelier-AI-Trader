@@ -71,7 +71,7 @@ class RiskManager:
         self._save_state()
         return pnl
 
-    def can_trade(self) -> Tuple[bool, str]:
+    def can_trade(self, symbol: str = None) -> Tuple[bool, str]:
         """Returns (allowed, reason_string). Python 3.9 compatible."""
         if self._state["stopped"]:
             return False, self._state["stop_reason"]
@@ -97,7 +97,12 @@ class RiskManager:
 
         open_pos = self.connector.get_open_positions()
         if len(open_pos) >= s.MAX_OPEN_TRADES:
-            return False, f"Max positions open ({s.MAX_OPEN_TRADES})"
+            return False, f"Max total positions open ({s.MAX_OPEN_TRADES})"
+
+        if symbol:
+            symbol_pos = [p for p in open_pos if p.get("symbol") == symbol]
+            if len(symbol_pos) >= s.MAX_TRADES_PER_SYMBOL:
+                return False, f"Max positions open for {symbol} ({s.MAX_TRADES_PER_SYMBOL})"
 
         return True, ""
 

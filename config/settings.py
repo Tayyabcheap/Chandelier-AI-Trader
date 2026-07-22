@@ -41,6 +41,7 @@ class Settings:
     DAILY_LOSS_LIMIT_PCT    = _get("DAILY_LOSS_LIMIT_PCT",    2.0, float)
     RISK_PER_TRADE_PCT      = _get("RISK_PER_TRADE_PCT",      1.0, float)
     MAX_OPEN_TRADES         = _get("MAX_OPEN_TRADES",         3,   int)
+    MAX_TRADES_PER_SYMBOL   = _get("MAX_TRADES_PER_SYMBOL",   2,   int)
 
     # Trailing stop
     ATR_TRAIL_MULTIPLIER = _get("ATR_TRAIL_MULTIPLIER", 1.5, float)
@@ -67,6 +68,8 @@ class Settings:
     GEMINI_ENABLED         = _get("GEMINI_ENABLED", "true").lower() == "true"
     GEMINI_HIGH_RISK_PCT   = _get("GEMINI_HIGH_RISK_PCT", 2.0, float)
     GEMINI_MEDIUM_RISK_PCT = _get("GEMINI_MEDIUM_RISK_PCT", 1.0, float)
+    MIN_GEMINI_CONFIDENCE  = _get("MIN_GEMINI_CONFIDENCE", 50, int)
+    DISCORD_BOT_TOKEN      = _get("DISCORD_BOT_TOKEN")
 
     # Session Filter
     SESSION_FILTER_ENABLED = _get("SESSION_FILTER_ENABLED", "true").lower() == "true"
