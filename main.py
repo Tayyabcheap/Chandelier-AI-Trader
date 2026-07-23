@@ -188,17 +188,19 @@ def main():
     else:
         logger.info("? Gemini AI Advisor disabled (no API key)")
 
+    risk_mgr    = RiskManager(settings, connector)
+    news_filter = NewsFilter(settings)
+    discord     = DiscordNotifier(settings)
+
     engine = SignalEngine(
         settings,
         regime_filter  = regime_filter,
         session_filter = session_filter,
         gemini_advisor = gemini_advisor,
         connector      = connector,
+        risk_manager   = risk_mgr,
     )
 
-    risk_mgr    = RiskManager(settings, connector)
-    news_filter = NewsFilter(settings)
-    discord     = DiscordNotifier(settings)
     executor    = TradeExecutor(settings, connector, risk_mgr,
                                 notifier=None,
                                 discord=discord)

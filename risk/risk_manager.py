@@ -88,13 +88,17 @@ class RiskManager:
             return False, reason
 
         open_pos = self.connector.get_open_positions()
-        if len(open_pos) >= s.MAX_OPEN_TRADES:
-            return False, f"Max total positions open ({s.MAX_OPEN_TRADES})"
+        
+        # Filter out manual trades so they don't count against limits
+        bot_pos = [p for p in open_pos if not p.get("comment", "").startswith("manual")]
+
+        if len(bot_pos) >= s.MAX_OPEN_TRADES:
+            return False, f"Max total bot positions open ({s.MAX_OPEN_TRADES})"
 
         if symbol:
-            symbol_pos = [p for p in open_pos if p.get("symbol") == symbol]
+            symbol_pos = [p for p in bot_pos if p.get("symbol") == symbol]
             if len(symbol_pos) >= s.MAX_TRADES_PER_SYMBOL:
-                return False, f"Max positions open for {symbol} ({s.MAX_TRADES_PER_SYMBOL})"
+                return False, f"Max bot positions open for {symbol} ({s.MAX_TRADES_PER_SYMBOL})"
 
         return True, ""
 

@@ -58,17 +58,30 @@ class TradeSignal:
 
 class SignalEngine:
     def __init__(self, settings, regime_filter=None, session_filter=None,
-                 gemini_advisor=None, connector=None):
+                 gemini_advisor=None, connector=None, risk_manager=None):
         self.settings       = settings
         self.regime_filter  = regime_filter
         self.session_filter = session_filter
         self.gemini         = gemini_advisor
         self.connector      = connector
+        self.risk_manager   = risk_manager
         self._last_candle   = {}
 
     def analyze(self, df: pd.DataFrame, symbol: str) -> TradeSignal:
         df  = add_indicators(df, self.settings)
         ind = get_latest(df)
+
+        candle_time = ind["timestamp"]
+        
+        # ══ Early Risk Check ═════════════════════════════════════════════
+        if self.risk_manager:
+            can_trade, block_reason = self.risk_manager.can_trade(symbol)
+            if not can_trade:
+                return TradeSignal(
+                    symbol=symbol, direction="HOLD", confidence=0,
+                    reasons=[f"🛑 {block_reason}"], risk_level="HIGH",
+                    timestamp=candle_time, indicators=ind
+                )
 
         candle_time = ind["timestamp"]
         if self._last_candle.get(symbol) == candle_time:

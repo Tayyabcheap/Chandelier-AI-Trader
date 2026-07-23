@@ -107,7 +107,10 @@ class ExnessDashboard(ctk.CTk):
         self.center_frame.grid(row=0, column=1, sticky="nsew", padx=2, pady=0)
         
         header = ctk.CTkLabel(self.center_frame, text="Active Positions", font=ctk.CTkFont(size=20, weight="bold"))
-        header.pack(pady=20)
+        header.pack(pady=(20, 5))
+
+        self.account_label = ctk.CTkLabel(self.center_frame, text="Balance: --- | Equity: ---", font=ctk.CTkFont(size=15, weight="bold"), text_color="#00FFCC")
+        self.account_label.pack(pady=(0, 15))
 
         self.cards_frame = ctk.CTkScrollableFrame(self.center_frame, fg_color="transparent")
         self.cards_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
@@ -213,6 +216,10 @@ class ExnessDashboard(ctk.CTk):
         if self.bot_running and self.data_cb:
             connector, signals = self.data_cb()
             if connector and connector.connected:
+                # Update live account balance
+                info = connector.get_account_info()
+                self.account_label.configure(text=f"Balance: {info['balance']:.2f} {info['currency']} | Equity: {info['equity']:.2f} {info['currency']}")
+
                 positions = connector.get_open_positions()
                 self._refresh_trade_cards(positions, signals)
         
