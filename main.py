@@ -91,6 +91,14 @@ def close_all_open_trades():
 
 def trading_cycle(conn, engine, risk_mgr, exec_, news_filter):
     global signals
+    
+    # ── Weekend Hibernation Check ──
+    now = datetime.utcnow()
+    if now.weekday() >= 5:  # 5 = Saturday, 6 = Sunday
+        logger.info("Bot is in Weekend Hibernation Mode (Forex markets are closed). Sleeping...")
+        signals.clear() # Clear signals so GUI shows empty state
+        return
+        
     for symbol in settings.SYMBOLS:
         try:
             # Blocklist filter
