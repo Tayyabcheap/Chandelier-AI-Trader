@@ -111,27 +111,30 @@ class TradeModal(discord.ui.Modal, title='Manual Trade Entry'):
             if len(tp_values) > 1:
                 split_lot = max(0.01, round(lot_val / len(tp_values), 2))
                 tickets = []
+                last_error = ""
                 
                 for i, tp_val in enumerate(tp_values):
-                    t = self.connector.open_position(sym, dir_val, split_lot, sl_val, tp_val, comment=f"manual_tp{i+1}")
+                    t, err = self.connector.open_position(sym, dir_val, split_lot, sl_val, tp_val, comment=f"manual_tp{i+1}")
                     if t:
                         tickets.append(f"TP{i+1}: `{tp_val}` [#{t}]")
+                    else:
+                        last_error = err
                 
                 if len(tickets) == len(tp_values):
                     msg = f"🚀 **MANUAL MULTI-TRADE OPENED**\n**{dir_val} {sym}**\nSplit Lot: `{split_lot}` x{len(tp_values)}\nSL: `{sl_val}`\n" + "\n".join(tickets)
                 elif tickets:
-                    msg = f"⚠️ **PARTIAL SUCCESS**\nSome tickets opened:\n" + "\n".join(tickets)
+                    msg = f"⚠️ **PARTIAL SUCCESS**\nSome tickets opened:\n" + "\n".join(tickets) + f"\nError on others: {last_error}"
                 else:
-                    msg = f"❌ **FAILED**\nCould not open trades. Check MT5 connection and parameters."
+                    msg = f"❌ **FAILED**\nCould not open trades. MT5 says: `{last_error}`"
             
             # Single TP logic
             else:
                 tp_val = tp_values[0]
-                t1 = self.connector.open_position(sym, dir_val, lot_val, sl_val, tp_val, comment="manual_trade")
+                t1, err = self.connector.open_position(sym, dir_val, lot_val, sl_val, tp_val, comment="manual_trade")
                 if t1:
                     msg = f"🚀 **MANUAL TRADE OPENED**\n**{dir_val} {sym}**\nLot: `{lot_val}`\nSL: `{sl_val}`\nTP: `{tp_val}`\nTicket: `#{t1}`"
                 else:
-                    msg = f"❌ **FAILED**\nCould not open trade. Check MT5 connection and parameters."
+                    msg = f"❌ **FAILED**\nCould not open trade. MT5 says: `{err}`"
                     
             await interaction.followup.send(msg)
 
