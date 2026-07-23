@@ -7,12 +7,15 @@ import customtkinter as ctk
 import threading
 import sys
 import time
+import numpy as np
 import pandas as pd
 from config.settings import settings
 
 try:
     from matplotlib.figure import Figure
     from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+    import matplotlib.ticker as mticker
+    import matplotlib.dates as mdates
     MATPLOTLIB_AVAILABLE = True
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
@@ -136,14 +139,37 @@ class ExnessDashboard(ctk.CTk):
         self.inspect_content.configure(state="disabled")
 
         # --- Analytics Tab ---
-        self.analytics_inner = ctk.CTkFrame(self.tab_analytics, fg_color="transparent")
-        self.analytics_inner.pack(fill="both", expand=True)
-        
+        self.analytics_scroll = ctk.CTkScrollableFrame(self.tab_analytics, fg_color="transparent")
+        self.analytics_scroll.pack(fill="both", expand=True)
+
         if not MATPLOTLIB_AVAILABLE:
-            ctk.CTkLabel(self.analytics_inner, text="Missing Dependency: matplotlib\n\nPlease run 'pip install matplotlib' to view graphs.", text_color="red").pack(pady=50)
+            ctk.CTkLabel(self.analytics_scroll, text="Missing Dependency: matplotlib\n\nPlease run 'pip install matplotlib' to view graphs.", text_color="red").pack(pady=50)
         else:
-            self.refresh_btn = ctk.CTkButton(self.analytics_inner, text="Refresh Graph", command=self.refresh_analytics)
-            self.refresh_btn.pack(pady=(10, 0))
+            # KPI Stats row
+            self.kpi_frame = ctk.CTkFrame(self.analytics_scroll, fg_color="transparent")
+            self.kpi_frame.pack(fill="x", padx=10, pady=(10, 5))
+            self.kpi_labels = {}
+            kpi_defs = [
+                ("total_pnl", "Total P&L", "$0.00", "#00FFCC"),
+                ("win_rate", "Win Rate", "0%", "#FFD700"),
+                ("total_trades", "Trades", "0", "#87CEEB"),
+                ("profit_factor", "Profit Factor", "0.0", "#DA70D6"),
+                ("avg_win", "Avg Win", "$0.00", "#2ECC71"),
+                ("avg_loss", "Avg Loss", "$0.00", "#E74C3C"),
+                ("max_dd", "Max Drawdown", "0%", "#FF6347"),
+                ("sharpe", "Sharpe Ratio", "0.0", "#00BFFF"),
+            ]
+            for i, (key, label, default, color) in enumerate(kpi_defs):
+                card = ctk.CTkFrame(self.kpi_frame, fg_color="#1e1e2e", corner_radius=8)
+                card.grid(row=i // 4, column=i % 4, padx=4, pady=4, sticky="nsew")
+                self.kpi_frame.grid_columnconfigure(i % 4, weight=1)
+                ctk.CTkLabel(card, text=label, font=ctk.CTkFont(size=10), text_color="gray60").pack(pady=(8, 0))
+                val_lbl = ctk.CTkLabel(card, text=default, font=ctk.CTkFont(size=16, weight="bold"), text_color=color)
+                val_lbl.pack(pady=(0, 8))
+                self.kpi_labels[key] = val_lbl
+
+            self.refresh_btn = ctk.CTkButton(self.analytics_scroll, text="⟳ Refresh Analytics", command=self.refresh_analytics, fg_color="#2d2d44", hover_color="#3d3d5c", height=32)
+            self.refresh_btn.pack(pady=(5, 5))
             self.canvas_widget = None
 
     # ── Analytics Logic ───────────────────────────────────────────────────
@@ -153,63 +179,194 @@ class ExnessDashboard(ctk.CTk):
         connector, _ = self.data_cb()
         if not connector or not connector.connected: return
         
-        # Run MT5 history fetch in background to avoid freezing GUI
+        self.refresh_btn.configure(text="Loading...", state="disabled")
         threading.Thread(target=self._plot_analytics_thread, args=(connector,), daemon=True).start()
 
     def _plot_analytics_thread(self, connector):
         deals = connector.get_all_closed_deals(days=30)
-        if not deals: return
+        if not deals:
+            self.after(0, lambda: self.refresh_btn.configure(text="⟳ Refresh Analytics", state="normal"))
+            return
         
         df = pd.DataFrame(deals)
-        df = df.sort_values("time")
+        df = df.sort_values("time").reset_index(drop=True)
         df["cumulative_profit"] = df["profit"].cumsum()
+        df["win"] = df["profit"] > 0
         
-        # Draw on main thread using 'after'
-        self.after(0, self._render_graph, df)
+        # Compute KPIs
+        total_pnl = df["profit"].sum()
+        wins = df[df["profit"] > 0]
+        losses = df[df["profit"] <= 0]
+        total_trades = len(df)
+        win_rate = (len(wins) / total_trades * 100) if total_trades > 0 else 0
+        avg_win = wins["profit"].mean() if len(wins) > 0 else 0
+        avg_loss = losses["profit"].mean() if len(losses) > 0 else 0
+        gross_profit = wins["profit"].sum() if len(wins) > 0 else 0
+        gross_loss = abs(losses["profit"].sum()) if len(losses) > 0 else 1
+        profit_factor = gross_profit / gross_loss if gross_loss > 0 else 0
+        
+        # Max drawdown
+        cummax = df["cumulative_profit"].cummax()
+        drawdown = df["cumulative_profit"] - cummax
+        max_dd = drawdown.min()
+        max_dd_pct = (max_dd / cummax.replace(0, 1).max() * 100) if cummax.max() != 0 else 0
+        
+        # Sharpe ratio (daily returns approximation)
+        if len(df) > 1:
+            daily_rets = df.groupby(df["time"].dt.date)["profit"].sum()
+            sharpe = (daily_rets.mean() / daily_rets.std() * np.sqrt(252)) if daily_rets.std() > 0 else 0
+        else:
+            sharpe = 0
+        
+        kpi_data = {
+            "total_pnl": f"${total_pnl:+.2f}",
+            "win_rate": f"{win_rate:.1f}%",
+            "total_trades": str(total_trades),
+            "profit_factor": f"{profit_factor:.2f}",
+            "avg_win": f"${avg_win:+.2f}",
+            "avg_loss": f"${avg_loss:.2f}",
+            "max_dd": f"{max_dd_pct:.1f}%",
+            "sharpe": f"{sharpe:.2f}",
+        }
+        
+        self.after(0, self._render_graph, df, drawdown, kpi_data)
 
-    def _render_graph(self, df):
+    def _render_graph(self, df, drawdown, kpi_data):
+        # Update KPI cards
+        for key, val in kpi_data.items():
+            if key in self.kpi_labels:
+                self.kpi_labels[key].configure(text=val)
+        
         if self.canvas_widget:
             self.canvas_widget.destroy()
 
-        fig = Figure(figsize=(7, 6), dpi=100, facecolor="#1a1a1a")
+        # Color palette
+        BG = "#0d1117"
+        GRID = "#21262d"
+        CYAN = "#00FFCC"
+        RED = "#FF003C"
+        GOLD = "#FFD700"
+        PURPLE = "#BD93F9"
+        BLUE = "#58A6FF"
+        ORANGE = "#FF9F43"
+        PINK = "#FF6B9D"
+        GRAY = "#8B949E"
         
-        # Subplot 1: Cumulative PnL Line Chart
-        ax1 = fig.add_subplot(211)
-        ax1.set_facecolor("#1a1a1a")
-        
-        # Cyberpunk neon colors
-        line_color = "#00FFCC" if df["cumulative_profit"].iloc[-1] >= 0 else "#FF003C"
-        ax1.plot(df["time"], df["cumulative_profit"], color=line_color, linewidth=2)
-        
-        # Add cool shading under the line
-        ax1.fill_between(df["time"], df["cumulative_profit"], 0, where=(df["cumulative_profit"] >= 0), facecolor="#00FFCC", alpha=0.15)
-        ax1.fill_between(df["time"], df["cumulative_profit"], 0, where=(df["cumulative_profit"] < 0), facecolor="#FF003C", alpha=0.15)
-        
-        ax1.set_title("📈 30-Day Cumulative PnL ($)", color="white", fontweight="bold")
-        ax1.tick_params(colors="gray")
-        ax1.grid(color="#333333", linestyle="--", linewidth=0.5)
+        fig = Figure(figsize=(7, 14), dpi=100, facecolor=BG)
+        fig.subplots_adjust(hspace=0.45, left=0.12, right=0.95, top=0.97, bottom=0.03)
 
-        # Subplot 2: Profit by Pair Bar Chart
-        ax2 = fig.add_subplot(212)
-        ax2.set_facecolor("#1a1a1a")
+        # ─── Chart 1: Equity Curve with Gradient Fill ────────────────────
+        ax1 = fig.add_subplot(611)
+        ax1.set_facecolor(BG)
+        
+        final_pnl = df["cumulative_profit"].iloc[-1]
+        line_color = CYAN if final_pnl >= 0 else RED
+        ax1.plot(df["time"], df["cumulative_profit"], color=line_color, linewidth=1.8, zorder=3)
+        ax1.fill_between(df["time"], df["cumulative_profit"], 0,
+                         where=(df["cumulative_profit"] >= 0), facecolor=CYAN, alpha=0.08)
+        ax1.fill_between(df["time"], df["cumulative_profit"], 0,
+                         where=(df["cumulative_profit"] < 0), facecolor=RED, alpha=0.08)
+        ax1.axhline(y=0, color=GRAY, linewidth=0.5, linestyle="-", alpha=0.3)
+        ax1.set_title("EQUITY CURVE", color="white", fontsize=10, fontweight="bold", loc="left")
+        ax1.set_ylabel("P&L ($)", color=GRAY, fontsize=8)
+        
+        # ─── Chart 2: Drawdown ───────────────────────────────────────────
+        ax2 = fig.add_subplot(612)
+        ax2.set_facecolor(BG)
+        ax2.fill_between(df["time"], drawdown, 0, facecolor=RED, alpha=0.3)
+        ax2.plot(df["time"], drawdown, color=RED, linewidth=1.0, alpha=0.7)
+        ax2.axhline(y=0, color=GRAY, linewidth=0.5, alpha=0.3)
+        ax2.set_title("DRAWDOWN", color="white", fontsize=10, fontweight="bold", loc="left")
+        ax2.set_ylabel("DD ($)", color=GRAY, fontsize=8)
+
+        # ─── Chart 3: Profit by Pair (Horizontal Bar) ────────────────────
+        ax3 = fig.add_subplot(613)
+        ax3.set_facecolor(BG)
         if "symbol" in df.columns:
-            pair_profit = df.groupby("symbol")["profit"].sum()
-            bar_colors = ["#00FFCC" if p >= 0 else "#FF003C" for p in pair_profit]
-            ax2.bar(pair_profit.index, pair_profit.values, color=bar_colors, edgecolor="black")
-            ax2.set_title("📊 Net Profit by Pair ($)", color="white", fontweight="bold")
-            ax2.tick_params(colors="gray")
-            ax2.grid(color="#333333", linestyle="--", linewidth=0.5, axis="y")
-            
-        for ax in [ax1, ax2]:
-            for spine in ax.spines.values():
-                spine.set_color("#444444")
-                
-        fig.tight_layout(pad=2.0)
+            pair_profit = df.groupby("symbol")["profit"].sum().sort_values()
+            colors = [CYAN if p >= 0 else RED for p in pair_profit]
+            bars = ax3.barh(pair_profit.index, pair_profit.values, color=colors, height=0.6, edgecolor="none")
+            # Add value labels
+            for bar, val in zip(bars, pair_profit.values):
+                ax3.text(val + (0.2 if val >= 0 else -0.2), bar.get_y() + bar.get_height() / 2,
+                         f"${val:.2f}", color="white", fontsize=7, va="center",
+                         ha="left" if val >= 0 else "right")
+        ax3.set_title("P&L BY INSTRUMENT", color="white", fontsize=10, fontweight="bold", loc="left")
+        ax3.axvline(x=0, color=GRAY, linewidth=0.5, alpha=0.3)
 
-        canvas = FigureCanvasTkAgg(fig, master=self.analytics_inner)
+        # ─── Chart 4: Win/Loss Distribution (Pie/Donut) ──────────────────
+        ax4 = fig.add_subplot(614)
+        ax4.set_facecolor(BG)
+        wins = len(df[df["profit"] > 0])
+        losses_count = len(df[df["profit"] <= 0])
+        if wins + losses_count > 0:
+            wedges, texts, autotexts = ax4.pie(
+                [wins, losses_count],
+                labels=[f"Wins ({wins})", f"Losses ({losses_count})"],
+                colors=[CYAN, RED],
+                autopct="%1.0f%%",
+                startangle=90,
+                pctdistance=0.75,
+                wedgeprops=dict(width=0.35, edgecolor=BG, linewidth=2),
+                textprops={"color": "white", "fontsize": 8}
+            )
+            for t in autotexts:
+                t.set_color("white")
+                t.set_fontsize(9)
+                t.set_fontweight("bold")
+            ax4.set_title("WIN / LOSS RATIO", color="white", fontsize=10, fontweight="bold", loc="left")
+
+        # ─── Chart 5: Daily PnL Bars ─────────────────────────────────────
+        ax5 = fig.add_subplot(615)
+        ax5.set_facecolor(BG)
+        daily_pnl = df.groupby(df["time"].dt.date)["profit"].sum()
+        if len(daily_pnl) > 0:
+            day_colors = [CYAN if p >= 0 else RED for p in daily_pnl]
+            x_pos = range(len(daily_pnl))
+            ax5.bar(x_pos, daily_pnl.values, color=day_colors, edgecolor="none", width=0.7)
+            # X-axis labels
+            if len(daily_pnl) <= 15:
+                ax5.set_xticks(list(x_pos))
+                ax5.set_xticklabels([str(d)[-5:] for d in daily_pnl.index], rotation=45, fontsize=6)
+            else:
+                step = max(1, len(daily_pnl) // 8)
+                ax5.set_xticks(list(x_pos)[::step])
+                ax5.set_xticklabels([str(d)[-5:] for d in daily_pnl.index[::step]], rotation=45, fontsize=6)
+            ax5.axhline(y=0, color=GRAY, linewidth=0.5, alpha=0.3)
+        ax5.set_title("DAILY P&L", color="white", fontsize=10, fontweight="bold", loc="left")
+        ax5.set_ylabel("$", color=GRAY, fontsize=8)
+
+        # ─── Chart 6: Trade Size Distribution (Histogram) ────────────────
+        ax6 = fig.add_subplot(616)
+        ax6.set_facecolor(BG)
+        if len(df) > 2:
+            profit_vals = df["profit"].values
+            bins = min(25, max(5, len(df) // 3))
+            n, bin_edges, patches = ax6.hist(profit_vals, bins=bins, edgecolor=BG, linewidth=0.5)
+            for patch, left_edge in zip(patches, bin_edges):
+                patch.set_facecolor(CYAN if left_edge >= 0 else RED)
+                patch.set_alpha(0.7)
+            ax6.axvline(x=0, color=GOLD, linewidth=1.0, linestyle="--", alpha=0.6)
+            median_val = np.median(profit_vals)
+            ax6.axvline(x=median_val, color=PURPLE, linewidth=1.0, linestyle=":", alpha=0.8)
+        ax6.set_title("TRADE P&L DISTRIBUTION", color="white", fontsize=10, fontweight="bold", loc="left")
+        ax6.set_xlabel("Profit ($)", color=GRAY, fontsize=8)
+        ax6.set_ylabel("Frequency", color=GRAY, fontsize=8)
+
+        # ─── Global Styling ──────────────────────────────────────────────
+        for ax in [ax1, ax2, ax3, ax4, ax5, ax6]:
+            ax.tick_params(colors=GRAY, labelsize=7)
+            ax.grid(color=GRID, linestyle="-", linewidth=0.3, alpha=0.5)
+            for spine in ax.spines.values():
+                spine.set_color(GRID)
+                spine.set_linewidth(0.5)
+
+        canvas = FigureCanvasTkAgg(fig, master=self.analytics_scroll)
         canvas.draw()
         self.canvas_widget = canvas.get_tk_widget()
-        self.canvas_widget.pack(fill="both", expand=True, padx=10, pady=10)
+        self.canvas_widget.pack(fill="both", expand=True, padx=5, pady=(0, 10))
+        
+        self.refresh_btn.configure(text="⟳ Refresh Analytics", state="normal")
 
     # ── Polling & Trade Cards ─────────────────────────────────────────────
     def poll_live_data(self):
