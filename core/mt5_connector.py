@@ -196,6 +196,7 @@ class MT5Connector:
             logger.info(f"[SIM] {order_type} {lot} lots {symbol} SL={sl:.5f} TP={tp:.5f}")
             return {"ticket": 999999, "retcode": 10009, "comment": "Simulated"}
 
+        mt5.symbol_select(symbol, True)
         tick = mt5.symbol_info_tick(symbol)
         if tick is None:
             logger.error(f"Failed to get tick data for '{symbol}'. Check exact symbol name (e.g. 'm' suffix) and Market Watch.")
