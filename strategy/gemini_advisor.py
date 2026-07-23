@@ -21,13 +21,14 @@ from core.logger import get_logger
 logger = get_logger("GeminiAdvisor")
 
 try:
-    import google.generativeai as genai
+    from google import genai
+    from google.genai import types
     GEMINI_AVAILABLE = True
 except ImportError:
     GEMINI_AVAILABLE = False
     logger.warning(
-        "google-generativeai not installed.\n"
-        "  Run:  pip install google-generativeai\n"
+        "google-genai not installed.\n"
+        "  Run:  pip install google-genai\n"
         "  Gemini AI advisor will be disabled."
     )
 
@@ -78,22 +79,17 @@ class GeminiAdvisor:
             return
 
         try:
-            genai.configure(api_key=api_key)
-            # Setting safety settings to BLOCK_NONE to prevent financial advice filters from triggering
-            safety_settings = [
-                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"}
-            ]
-
-            self.model = genai.GenerativeModel(
-                model_name=model_name,
+            self.client = genai.Client(api_key=api_key)
+            self.config = types.GenerateContentConfig(
+                temperature=0.2,
                 system_instruction=SYSTEM_PROMPT,
-                generation_config=genai.GenerationConfig(
-                    temperature=0.2
-                ),
-                safety_settings=safety_settings
+                response_mime_type="application/json",
+                safety_settings=[
+                    types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
+                    types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
+                    types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
+                    types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE")
+                ]
             )
             self.enabled = True
             logger.info(f"Gemini AI Risk Manager ACTIVE (model: {model_name})")
@@ -129,7 +125,11 @@ class GeminiAdvisor:
 
         try:
             prompt = self._build_prompt(trade_context)
-            response = self.model.generate_content(prompt)
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=self.config
+            )
             _last_call_time = time.time()
 
             text = response.text.strip()
@@ -139,7 +139,7 @@ class GeminiAdvisor:
             text = text.strip()
 
             if not text:
-                logger.error(f"Gemini returned empty text! Finish reason: {response.candidates[0].finish_reason if response.candidates else 'Unknown'}")
+                logger.error(f"Gemini returned empty text!")
                 raise ValueError("Empty response from Gemini")
 
             try:
