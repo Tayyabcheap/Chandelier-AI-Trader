@@ -62,6 +62,7 @@ running = True
 signals = {}
 connector = None
 executor  = None
+risk_mgr  = None
 
 
 def graceful_shutdown(sig=None, frame=None):
@@ -132,7 +133,7 @@ def trading_cycle(conn, engine, risk_mgr, exec_, news_filter):
 
 
 def main():
-    global connector, executor
+    global connector, executor, risk_mgr
 
     print("\n" + "="*60)
     print("  * Exness AutoTrader v2.0 - Next-Gen AI-Powered")
@@ -264,9 +265,9 @@ def stop_bot_thread():
     running = False
 
 def get_gui_data():
-    """Returns live connector and signals for the GUI to poll."""
-    global connector, signals
-    return connector, signals
+    """Returns live connector, signals, and risk_mgr for the GUI to poll."""
+    global connector, signals, risk_mgr
+    return connector, signals, risk_mgr
 
 if __name__ == "__main__":
     # Import here to avoid circular imports during startup

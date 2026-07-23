@@ -112,8 +112,11 @@ class ExnessDashboard(ctk.CTk):
         header = ctk.CTkLabel(self.center_frame, text="Active Positions", font=ctk.CTkFont(size=20, weight="bold"))
         header.pack(pady=(20, 5))
 
-        self.account_label = ctk.CTkLabel(self.center_frame, text="Balance: --- | Equity: ---", font=ctk.CTkFont(size=15, weight="bold"), text_color="#00FFCC")
-        self.account_label.pack(pady=(0, 15))
+        self.account_label = ctk.CTkLabel(self.center_frame, text="Balance: --- | Equity: ---", font=ctk.CTkFont(size=15, weight="bold"), text_color="#2ECC71")
+        self.account_label.pack(pady=(0, 5))
+        
+        self.pnl_label = ctk.CTkLabel(self.center_frame, text="Today's P&L: --- | Open P&L: ---", font=ctk.CTkFont(size=13), text_color="gray70")
+        self.pnl_label.pack(pady=(0, 15))
 
         self.cards_frame = ctk.CTkScrollableFrame(self.center_frame, fg_color="transparent")
         self.cards_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
@@ -371,24 +374,34 @@ class ExnessDashboard(ctk.CTk):
     # ── Polling & Trade Cards ─────────────────────────────────────────────
     def poll_live_data(self):
         if self.bot_running and self.data_cb:
-            connector, signals = self.data_cb()
+            connector, signals, risk_mgr = self.data_cb()
             if connector and connector.connected:
                 # Update live account balance
                 info = connector.get_account_info()
                 self.account_label.configure(text=f"Balance: {info['balance']:.2f} {info['currency']} | Equity: {info['equity']:.2f} {info['currency']}")
+                
+                # Update P&L Labels
+                today_pnl = risk_mgr.get_daily_summary()['pnl_pct'] if risk_mgr else 0.0
+                open_pnl = info['profit']
+                
+                pnl_text = f"Today's P&L: {today_pnl:+.2f}% | Open P&L: ${open_pnl:+.2f}"
+                self.pnl_label.configure(text=pnl_text)
 
                 positions = connector.get_open_positions()
-                self._refresh_trade_cards(positions, signals)
+                self._refresh_trade_cards(positions, signals, connector)
         
         self.after(2000, self.poll_live_data)
 
-    def _refresh_trade_cards(self, positions, signals):
+    def _refresh_trade_cards(self, positions, signals, connector):
         for widget in self.cards_frame.winfo_children():
             widget.destroy()
 
         if not positions:
             ctk.CTkLabel(self.cards_frame, text="No active trades. Scanning market...", text_color="gray50").pack(pady=50)
             return
+            
+        if not hasattr(self, '_point_cache'):
+            self._point_cache = {}
 
         for pos in positions:
             sym = pos["symbol"]
@@ -396,6 +409,24 @@ class ExnessDashboard(ctk.CTk):
             profit = pos["profit"]
             typ = "BUY" if pos["type"] == 0 else "SELL"
             color = "#2ECC71" if profit >= 0 else "#E74C3C"
+            
+            # Pip Calculation
+            if sym not in self._point_cache:
+                info = connector.get_symbol_info(sym)
+                self._point_cache[sym] = info.get("point", 0.00001)
+            
+            point = self._point_cache[sym]
+            price_open = pos["price_open"]
+            price_current = pos["price_current"]
+            
+            # Standard calculation: 1 pip = 10 points
+            if typ == "BUY":
+                pips = (price_current - price_open) / (point * 10)
+            else:
+                pips = (price_open - price_current) / (point * 10)
+                
+            pip_str = f"{pips:+.1f} pips"
+            pip_color = "#2ECC71" if pips >= 0 else "#E74C3C"
             
             card = ctk.CTkFrame(self.cards_frame, corner_radius=8, fg_color="gray15")
             card.pack(fill="x", pady=10)
@@ -409,7 +440,9 @@ class ExnessDashboard(ctk.CTk):
             btm_row = ctk.CTkFrame(card, fg_color="transparent")
             btm_row.pack(fill="x", padx=15, pady=(5, 15))
             
-            ctk.CTkLabel(btm_row, text=f"Vol: {pos['volume']} | Ticket: #{ticket}").pack(side="left")
+            # Show Volume, Ticket, and Live Pips
+            ctk.CTkLabel(btm_row, text=f"Vol: {pos['volume']} | Ticket: #{ticket} | ").pack(side="left")
+            ctk.CTkLabel(btm_row, text=pip_str, font=ctk.CTkFont(weight="bold"), text_color=pip_color).pack(side="left")
             
             # Action buttons
             close_btn = ctk.CTkButton(btm_row, text="❌ Close", width=70, fg_color="#E74C3C", hover_color="#C0392B", 
@@ -418,14 +451,14 @@ class ExnessDashboard(ctk.CTk):
             
             inspect_btn = ctk.CTkButton(btm_row, text="Inspect Logic", width=100, 
                                         command=lambda s=sym: self.inspect_trade(s, signals))
-            inspect_btn.pack(side="right")
+            inspect_btn.pack(side="right", padx=(0, 10))
 
     def inspect_trade(self, symbol, signals):
         self.tabs.set("Latest AI Scan")
         self.inspect_content.configure(state="normal")
         self.inspect_content.delete("0.0", "end")
         
-        connector, _ = self.data_cb()
+        connector, _, _ = self.data_cb()
         # Find the active position for this symbol to get exact SL/TP dollar values
         positions = connector.get_open_positions() if connector else []
         sym_pos = [p for p in positions if p["symbol"] == symbol]
