@@ -148,6 +148,9 @@ class RiskManager:
         s         = self.settings
 
         for pos in positions:
+            if pos.get("comment", "").startswith("manual"):
+                continue  # Let user manage their own manual trade stops
+                
             symbol     = pos.get("symbol", "")
             ticket     = pos.get("ticket", 0)
             pos_type   = pos.get("type", 0)
