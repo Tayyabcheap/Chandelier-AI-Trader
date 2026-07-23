@@ -55,6 +55,95 @@ class CloseTradeView(discord.ui.View):
         self.add_item(TradeDropdown(connector))
 
 
+class TradeModal(discord.ui.Modal, title='Manual Trade Entry'):
+    symbol = discord.ui.TextInput(
+        label='Symbol (e.g., XAUUSDm)',
+        placeholder='XAUUSDm',
+        required=True
+    )
+    direction = discord.ui.TextInput(
+        label='Direction',
+        placeholder='BUY or SELL',
+        required=True
+    )
+    sl = discord.ui.TextInput(
+        label='Stop Loss',
+        placeholder='e.g., 2300.50',
+        required=True
+    )
+    tps = discord.ui.TextInput(
+        label='Take Profits (Comma separated for multi-TP)',
+        placeholder='e.g., 2310.0, 2320.0',
+        required=True
+    )
+    lot = discord.ui.TextInput(
+        label='Lot Size',
+        default='0.1',
+        required=True
+    )
+
+    def __init__(self, connector):
+        super().__init__()
+        self.connector = connector
+
+    async def on_submit(self, interaction: discord.Interaction):
+        sym = self.symbol.value.upper().strip()
+        dir_val = self.direction.value.upper().strip()
+        
+        if dir_val not in ["BUY", "SELL"]:
+            await interaction.response.send_message("❌ Direction must be BUY or SELL.", ephemeral=True)
+            return
+
+        try:
+            sl_val = float(self.sl.value.strip())
+            lot_val = float(self.lot.value.strip())
+            
+            # Parse multiple TPs
+            tp_strings = [x.strip() for x in self.tps.value.split(",") if x.strip()]
+            tp_values = [float(x) for x in tp_strings]
+            
+            if not tp_values:
+                raise ValueError("No Take Profit provided.")
+
+            await interaction.response.defer()
+
+            # Multiple TPs logic
+            if len(tp_values) > 1:
+                split_lot = max(0.01, round(lot_val / len(tp_values), 2))
+                tickets = []
+                
+                for i, tp_val in enumerate(tp_values):
+                    t = self.connector.open_position(sym, dir_val, split_lot, sl_val, tp_val, comment=f"manual_tp{i+1}")
+                    if t:
+                        tickets.append(f"TP{i+1}: `{tp_val}` [#{t}]")
+                
+                if len(tickets) == len(tp_values):
+                    msg = f"🚀 **MANUAL MULTI-TRADE OPENED**\n**{dir_val} {sym}**\nSplit Lot: `{split_lot}` x{len(tp_values)}\nSL: `{sl_val}`\n" + "\n".join(tickets)
+                elif tickets:
+                    msg = f"⚠️ **PARTIAL SUCCESS**\nSome tickets opened:\n" + "\n".join(tickets)
+                else:
+                    msg = f"❌ **FAILED**\nCould not open trades. Check MT5 connection and parameters."
+            
+            # Single TP logic
+            else:
+                tp_val = tp_values[0]
+                t1 = self.connector.open_position(sym, dir_val, lot_val, sl_val, tp_val, comment="manual_trade")
+                if t1:
+                    msg = f"🚀 **MANUAL TRADE OPENED**\n**{dir_val} {sym}**\nLot: `{lot_val}`\nSL: `{sl_val}`\nTP: `{tp_val}`\nTicket: `#{t1}`"
+                else:
+                    msg = f"❌ **FAILED**\nCould not open trade. Check MT5 connection and parameters."
+                    
+            await interaction.followup.send(msg)
+
+        except ValueError as e:
+            await interaction.response.send_message(f"❌ Input Error: Make sure SL, TP, and Lot are valid numbers. ({e})", ephemeral=True)
+        except Exception as e:
+            if not interaction.response.is_done():
+                await interaction.response.send_message(f"❌ Error: {e}", ephemeral=True)
+            else:
+                await interaction.followup.send(f"❌ Error: {e}")
+
+
 class ExnessDiscordBot(discord.Client):
     def __init__(self, connector, settings):
         intents = discord.Intents.default()
@@ -178,43 +267,11 @@ def run_discord_bot(connector, settings):
         else:
             await interaction.response.send_message("⚠️ No settings provided. Usage: `/settings profit_target: 5.0`", ephemeral=True)
 
-    @bot.tree.command(name="trade", description="Manually open a trade (Bypasses Limits). Supports multiple TPs.")
-    @app_commands.choices(direction=[
-        app_commands.Choice(name="BUY", value="BUY"),
-        app_commands.Choice(name="SELL", value="SELL")
-    ])
-    async def trade_cmd(interaction: discord.Interaction, symbol: str, direction: app_commands.Choice[str], sl: float, tp1: float, tp2: float = 0.0, lot: float = 0.1):
-        sym = symbol.upper()
-        dir_val = direction.value
-        await interaction.response.defer()
-        
-        try:
-            if tp2 > 0.0:
-                half_lot = max(0.01, round(lot / 2.0, 2))
-                
-                # Ticket 1 (TP1)
-                t1 = bot.connector.open_position(sym, dir_val, half_lot, sl, tp1, comment="manual_tp1")
-                # Ticket 2 (TP2)
-                t2 = bot.connector.open_position(sym, dir_val, half_lot, sl, tp2, comment="manual_tp2")
-                
-                if t1 and t2:
-                    msg = f"🚀 **MANUAL DUAL-TRADE OPENED**\n**{dir_val} {sym}**\nSplit Lot: `{half_lot}` x2\nSL: `{sl}`\nTP1: `{tp1}` [#{t1}]\nTP2: `{tp2}` [#{t2}]"
-                elif t1:
-                    msg = f"⚠️ **PARTIAL SUCCESS**\nTP1 Ticket opened [#{t1}], but TP2 Ticket failed."
-                else:
-                    msg = f"❌ **FAILED**\nCould not open trades. Check MT5 connection and parameters."
-            else:
-                # Single Ticket
-                t1 = bot.connector.open_position(sym, dir_val, lot, sl, tp1, comment="manual_trade")
-                if t1:
-                    msg = f"🚀 **MANUAL TRADE OPENED**\n**{dir_val} {sym}**\nLot: `{lot}`\nSL: `{sl}`\nTP: `{tp1}`\nTicket: `#{t1}`"
-                else:
-                    msg = f"❌ **FAILED**\nCould not open trade. Check MT5 connection and parameters."
-                    
-            await interaction.followup.send(msg)
-            
-        except Exception as e:
-            await interaction.followup.send(f"❌ Error opening manual trade: {e}")
+    @bot.tree.command(name="trade", description="Manually open a trade via an interactive popup form.")
+    async def trade_cmd(interaction: discord.Interaction):
+        # Open the modal popup form
+        modal = TradeModal(bot.connector)
+        await interaction.response.send_modal(modal)
 
     try:
         # Create a new event loop for this thread
