@@ -425,25 +425,47 @@ class ExnessDashboard(ctk.CTk):
         self.inspect_content.configure(state="normal")
         self.inspect_content.delete("0.0", "end")
         
+        connector, _ = self.data_cb()
+        # Find the active position for this symbol to get exact SL/TP dollar values
+        positions = connector.get_open_positions() if connector else []
+        sym_pos = [p for p in positions if p["symbol"] == symbol]
+        
+        report = f"=== CURRENT LIVE {symbol} SCAN ===\n\n"
+        
+        if sym_pos:
+            p = sym_pos[0] # Just take the first one if multiple
+            sl_val = p.get("sl", 0.0)
+            tp_val = p.get("tp", 0.0)
+            vol = p.get("volume", 0.0)
+            entry = p.get("price_open", 0.0)
+            typ = p.get("type", 0) # 0=BUY, 1=SELL
+            
+            sl_dlr = connector.calc_profit(typ, symbol, vol, entry, sl_val) if sl_val > 0 else 0.0
+            tp_dlr = connector.calc_profit(typ, symbol, vol, entry, tp_val) if tp_val > 0 else 0.0
+            
+            report += (
+                f"[ LIVE POSITION LIMITS ]\n"
+                f"Entry Price      : {entry:.5f}\n"
+                f"Stop Loss (SL)   : {sl_val:.5f}  (≈ {sl_dlr:+.2f} USD)\n"
+                f"Take Profit (TP) : {tp_val:.5f}  (≈ {tp_dlr:+.2f} USD)\n\n"
+            )
+
         sig = signals.get(symbol)
         if not sig:
-            self.inspect_content.insert("0.0", f"No internal signal data found for {symbol}. It may have been placed manually.")
+            report += f"No AI logic recorded. Trade was placed manually or bot was restarted."
         else:
-            ai_text = sig.gemini_reasoning if sig.gemini_reasoning else "No AI logic recorded."
-            report = (
-                f"=== CURRENT LIVE {symbol} SCAN ===\n\n"
+            ai_text = sig.gemini_reasoning if sig.gemini_reasoning else "No AI logic recorded (Signal was HOLD)."
+            report += (
                 f"[ ALGORITHMIC FILTERS ]\n"
                 f"Chandelier Trend : {sig.direction}\n"
-                f"ADX Momentum     : {sig.adx:.1f}\n"
-                f"Stop Loss Setup  : {sig.stop_loss:.5f}\n"
-                f"Take Profit Set  : {sig.take_profit:.5f}\n\n"
+                f"ADX Momentum     : {sig.adx:.1f}\n\n"
                 f"[ GEMINI AI ADVISOR ]\n"
                 f"Decision Rating  : {sig.gemini_decision}\n"
                 f"Risk Level       : {sig.risk_level}\n\n"
                 f"[ REASONING LOG ]\n{ai_text}\n"
             )
-            self.inspect_content.insert("0.0", report)
             
+        self.inspect_content.insert("0.0", report)
         self.inspect_content.configure(state="disabled")
 
     # ── User Actions ──────────────────────────────────────────────────────

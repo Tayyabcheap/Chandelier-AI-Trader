@@ -275,6 +275,13 @@ class MT5Connector:
         result = mt5.order_send(request)
         return result is not None and result.retcode == mt5.TRADE_RETCODE_DONE
 
+    def calc_profit(self, action_type: int, symbol: str, lot: float, price_open: float, price_close: float) -> float:
+        """Calculate exact profit in account currency for an SL or TP hit."""
+        if not MT5_AVAILABLE:
+            return 0.0
+        profit = mt5.order_calc_profit(action_type, symbol, lot, price_open, price_close)
+        return profit if profit is not None else 0.0
+
     def get_deal_result(self, ticket: int) -> tuple:
         """
         Get the actual result of a closed trade from MT5 deal history.
