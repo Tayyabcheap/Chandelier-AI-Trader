@@ -39,7 +39,7 @@ import os
 import time
 import signal
 import schedule
-from datetime import datetime
+from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -93,7 +93,7 @@ def trading_cycle(conn, engine, risk_mgr, exec_, news_filter):
     global signals
     
     # ── Weekend Hibernation Check ──
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     if now.weekday() >= 5:  # 5 = Saturday, 6 = Sunday
         logger.info("Bot is in Weekend Hibernation Mode (Forex markets are closed). Sleeping...")
         signals.clear() # Clear signals so GUI shows empty state

@@ -4,7 +4,7 @@ Fetches ForexFactory calendar and pauses trading around high-impact news events.
 """
 
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Tuple
 from core.logger import get_logger
 
@@ -35,7 +35,7 @@ class NewsFilter:
 
         try:
             events = self._get_events()
-            now    = datetime.utcnow()
+            now    = datetime.now(timezone.utc).replace(tzinfo=None)
             pause  = timedelta(minutes=self.settings.NEWS_PAUSE_MINUTES)
 
             # Get currencies in this symbol
@@ -71,7 +71,7 @@ class NewsFilter:
 
     def _get_events(self) -> list:
         """Fetch today's economic calendar. Cached for 60 minutes."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         if (self._cache_time and
                 (now - self._cache_time).total_seconds() < 3600 and
                 self._cache):

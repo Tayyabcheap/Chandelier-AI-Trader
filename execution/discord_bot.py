@@ -87,7 +87,7 @@ class TradeModal(discord.ui.Modal, title='Manual Trade Entry'):
         self.connector = connector
 
     async def on_submit(self, interaction: discord.Interaction):
-        sym = self.symbol.value.upper().strip()
+        sym = self.symbol.value.strip()
         dir_val = self.direction.value.upper().strip()
         
         if dir_val not in ["BUY", "SELL"]:
