@@ -233,6 +233,14 @@ class MT5Connector:
 
         return {"ticket": result.order, "retcode": result.retcode, "comment": result.comment}
 
+    def open_position(self, symbol: str, order_type: str, lot: float,
+                      sl: float, tp: float, comment: str = "") -> int:
+        """Convenience wrapper: opens a position and returns just the ticket number (0 on failure)."""
+        result = self.place_order(symbol, order_type, lot, sl, tp, comment)
+        if result and result.get("retcode") == 10009:
+            return result.get("ticket", 0)
+        return 0
+
     def modify_trailing_stop(self, ticket: int, symbol: str, new_sl: float, current_tp: float) -> bool:
         if not MT5_AVAILABLE:
             return True

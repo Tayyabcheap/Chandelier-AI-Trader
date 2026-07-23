@@ -83,7 +83,6 @@ class SignalEngine:
                     timestamp=candle_time, indicators=ind
                 )
 
-        candle_time = ind["timestamp"]
         if self._last_candle.get(symbol) == candle_time:
             return TradeSignal(
                 symbol=symbol, direction="HOLD", confidence=0,
