@@ -70,13 +70,22 @@ class ExnessDashboard(ctk.CTk):
         self.close_btn.pack(fill="x", padx=20, pady=(0, 20))
 
         # Symbol Manager
-        ctk.CTkLabel(self.sidebar, text="Active Symbols (Uncheck to Block)", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=20, pady=(0,5))
-        self.symbol_checkboxes = {}
-        for sym in settings.SYMBOLS:
-            var = ctk.BooleanVar(value=sym not in settings.BLOCKED_SYMBOLS)
-            cb = ctk.CTkCheckBox(self.sidebar, text=sym, variable=var)
-            cb.pack(anchor="w", padx=30, pady=2)
-            self.symbol_checkboxes[sym] = var
+        ctk.CTkLabel(self.sidebar, text="Active Symbols", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=20, pady=(0,5))
+        
+        # Add Symbol Row
+        add_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        add_frame.pack(fill="x", padx=20, pady=5)
+        
+        self.symbol_entry = ctk.CTkEntry(add_frame, placeholder_text="e.g. EURUSDc")
+        self.symbol_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        
+        self.add_sym_btn = ctk.CTkButton(add_frame, text="Add", width=50, command=self.add_symbol)
+        self.add_sym_btn.pack(side="right")
+        
+        # Active Symbols List
+        self.active_symbols_frame = ctk.CTkFrame(self.sidebar, fg_color="gray12", corner_radius=5)
+        self.active_symbols_frame.pack(fill="x", padx=20, pady=5)
+        self._refresh_symbol_list()
 
         # Settings
         ctk.CTkLabel(self.sidebar, text="Risk Management (%)", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=20, pady=(20,5))
@@ -94,6 +103,48 @@ class ExnessDashboard(ctk.CTk):
 
         self.save_btn = ctk.CTkButton(self.sidebar, text="Save Config", command=self.save_settings, fg_color="transparent", border_width=2)
         self.save_btn.pack(fill="x", padx=20, pady=(30, 20))
+
+    def _refresh_symbol_list(self):
+        for widget in self.active_symbols_frame.winfo_children():
+            widget.destroy()
+            
+        if not settings.SYMBOLS:
+            ctk.CTkLabel(self.active_symbols_frame, text="No active pairs", text_color="gray50").pack(pady=5)
+            
+        for sym in settings.SYMBOLS:
+            row = ctk.CTkFrame(self.active_symbols_frame, fg_color="transparent")
+            row.pack(fill="x", padx=10, pady=2)
+            
+            ctk.CTkLabel(row, text=sym, font=ctk.CTkFont(weight="bold")).pack(side="left")
+            remove_btn = ctk.CTkButton(row, text="❌", width=30, fg_color="#E74C3C", hover_color="#C0392B",
+                                       command=lambda s=sym: self.remove_symbol(s))
+            remove_btn.pack(side="right")
+            
+    def add_symbol(self):
+        sym = self.symbol_entry.get().strip()
+        if not sym: return
+        
+        # Validate with MT5
+        connector, _, _ = self.data_cb()
+        if connector and connector.connected:
+            info = connector.get_symbol_info(sym)
+            if not info:
+                self.symbol_entry.delete(0, 'end')
+                self.symbol_entry.insert(0, "Invalid Symbol")
+                return
+        
+        if sym not in settings.SYMBOLS:
+            settings.SYMBOLS.append(sym)
+            settings.update_setting("SYMBOLS", ",".join(settings.SYMBOLS), list)
+            
+        self.symbol_entry.delete(0, 'end')
+        self._refresh_symbol_list()
+        
+    def remove_symbol(self, sym):
+        if sym in settings.SYMBOLS:
+            settings.SYMBOLS.remove(sym)
+            settings.update_setting("SYMBOLS", ",".join(settings.SYMBOLS), list)
+            self._refresh_symbol_list()
 
     def _make_input_row(self, label_text, default_val):
         frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
@@ -132,10 +183,12 @@ class ExnessDashboard(ctk.CTk):
         self.tabs = ctk.CTkTabview(self.right_frame)
         self.tabs.pack(fill="both", expand=True, padx=10, pady=10)
         
-        self.tab_inspector = self.tabs.add("Latest AI Scan")
-        self.tab_analytics = self.tabs.add("Performance Analytics")
+        self.tabs.add("Performance Analytics")
+        self.tabs.add("Latest AI Scan")
+        self.tabs.add("📜 Trade History")
         
-        # --- Inspector Tab ---
+        self.tab_analytics = self.tabs.tab("Performance Analytics")
+        self.tab_inspector = self.tabs.tab("Latest AI Scan")
         self.inspect_content = ctk.CTkTextbox(self.tab_inspector, font=("Consolas", 14), wrap="word", fg_color="transparent")
         self.inspect_content.pack(fill="both", expand=True, padx=10, pady=10)
         self.inspect_content.insert("0.0", "Click 'Inspect Logic' on a trade to see the LATEST market scan for that pair.\n\nNote: This shows the CURRENT live AI reasoning, not the historical reasoning from when the trade was opened.")
@@ -234,7 +287,40 @@ class ExnessDashboard(ctk.CTk):
         
         self.after(0, self._render_graph, df, drawdown, kpi_data)
 
+    def _refresh_trade_history(self, df):
+        tab = self.tabs.tab("📜 Trade History")
+        for widget in tab.winfo_children():
+            widget.destroy()
+            
+        if df.empty:
+            ctk.CTkLabel(tab, text="No closed trades found.", text_color="gray50").pack(pady=50)
+            return
+            
+        scroll = ctk.CTkScrollableFrame(tab, fg_color="transparent")
+        scroll.pack(fill="both", expand=True)
+        
+        # Sort by time descending (newest first)
+        df_sorted = df.sort_values("time", ascending=False)
+        
+        for _, row in df_sorted.iterrows():
+            card = ctk.CTkFrame(scroll, fg_color="gray15", corner_radius=5)
+            card.pack(fill="x", pady=5)
+            
+            sym = row["symbol"]
+            prof = row["profit"]
+            tck = row["ticket"]
+            t = row["time"].strftime("%Y-%m-%d %H:%M")
+            color = "#2ECC71" if prof >= 0 else "#E74C3C"
+            
+            left = ctk.CTkFrame(card, fg_color="transparent")
+            left.pack(side="left", padx=15, pady=10)
+            ctk.CTkLabel(left, text=f"#{tck} | {sym}", font=ctk.CTkFont(weight="bold")).pack(anchor="w")
+            ctk.CTkLabel(left, text=f"Closed: {t}", text_color="gray60").pack(anchor="w")
+            
+            ctk.CTkLabel(card, text=f"${prof:+.2f}", font=ctk.CTkFont(size=16, weight="bold"), text_color=color).pack(side="right", padx=20)
+
     def _render_graph(self, df, drawdown, kpi_data):
+        self._refresh_trade_history(df)
         # Update KPI cards
         for key, val in kpi_data.items():
             if key in self.kpi_labels:
@@ -503,7 +589,7 @@ class ExnessDashboard(ctk.CTk):
 
     # ── User Actions ──────────────────────────────────────────────────────
     def close_single_trade(self, ticket):
-        connector, _ = self.data_cb()
+        connector, _, _ = self.data_cb()
         if connector:
             print(f"Force closing ticket #{ticket} from GUI...")
             threading.Thread(target=connector.close_position, args=(ticket,), daemon=True).start()
