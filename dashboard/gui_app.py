@@ -69,23 +69,13 @@ class ExnessDashboard(ctk.CTk):
         self.close_btn = ctk.CTkButton(self.sidebar, text="EMERGENCY: CLOSE ALL", command=self.close_all_trades, fg_color="#E74C3C", hover_color="#C0392B", height=40)
         self.close_btn.pack(fill="x", padx=20, pady=(0, 20))
 
-        # Symbol Manager
-        ctk.CTkLabel(self.sidebar, text="Active Symbols", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=20, pady=(0,5))
+        # Checkbox Toggle Manager (Top)
+        ctk.CTkLabel(self.sidebar, text="Active Symbols (Uncheck to Block)", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=20, pady=(0,5))
+        self.checkbox_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        self.checkbox_frame.pack(fill="x", padx=10, pady=2)
         
-        # Add Symbol Row
-        add_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-        add_frame.pack(fill="x", padx=20, pady=5)
-        
-        self.symbol_entry = ctk.CTkEntry(add_frame, placeholder_text="e.g. EURUSDc")
-        self.symbol_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
-        
-        self.add_sym_btn = ctk.CTkButton(add_frame, text="Add", width=50, command=self.add_symbol)
-        self.add_sym_btn.pack(side="right")
-        
-        # Active Symbols List
-        self.active_symbols_frame = ctk.CTkFrame(self.sidebar, fg_color="gray12", corner_radius=5)
-        self.active_symbols_frame.pack(fill="x", padx=20, pady=5)
-        self._refresh_symbol_list()
+        self.symbol_checkboxes = {}
+        self._refresh_checkboxes()
 
         # Settings
         ctk.CTkLabel(self.sidebar, text="Risk Management (%)", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=20, pady=(20,5))
@@ -101,18 +91,45 @@ class ExnessDashboard(ctk.CTk):
         self.med_risk_entry = self._make_input_row("Medium Confidence (5-7)", settings.GEMINI_MEDIUM_RISK_PCT)
         self.min_conf_entry = self._make_input_row("Minimum AI Rating", settings.MIN_GEMINI_CONFIDENCE)
 
+        # Manage Master Pairs (Bottom)
+        ctk.CTkLabel(self.sidebar, text="Manage Master Pairs", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=20, pady=(20,5))
+        
+        add_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        add_frame.pack(fill="x", padx=20, pady=5)
+        
+        self.symbol_entry = ctk.CTkEntry(add_frame, placeholder_text="e.g. EURUSDc")
+        self.symbol_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        
+        self.add_sym_btn = ctk.CTkButton(add_frame, text="Add", width=50, command=self.add_symbol)
+        self.add_sym_btn.pack(side="right")
+        
+        self.master_list_frame = ctk.CTkFrame(self.sidebar, fg_color="gray12", corner_radius=5)
+        self.master_list_frame.pack(fill="x", padx=20, pady=5)
+        self._refresh_master_list()
+
         self.save_btn = ctk.CTkButton(self.sidebar, text="Save Config", command=self.save_settings, fg_color="transparent", border_width=2)
         self.save_btn.pack(fill="x", padx=20, pady=(30, 20))
 
-    def _refresh_symbol_list(self):
-        for widget in self.active_symbols_frame.winfo_children():
+    def _refresh_checkboxes(self):
+        for widget in self.checkbox_frame.winfo_children():
+            widget.destroy()
+            
+        self.symbol_checkboxes = {}
+        for sym in settings.SYMBOLS:
+            var = ctk.BooleanVar(value=sym not in settings.BLOCKED_SYMBOLS)
+            cb = ctk.CTkCheckBox(self.checkbox_frame, text=sym, variable=var)
+            cb.pack(anchor="w", padx=20, pady=2)
+            self.symbol_checkboxes[sym] = var
+
+    def _refresh_master_list(self):
+        for widget in self.master_list_frame.winfo_children():
             widget.destroy()
             
         if not settings.SYMBOLS:
-            ctk.CTkLabel(self.active_symbols_frame, text="No active pairs", text_color="gray50").pack(pady=5)
+            ctk.CTkLabel(self.master_list_frame, text="No active pairs", text_color="gray50").pack(pady=5)
             
         for sym in settings.SYMBOLS:
-            row = ctk.CTkFrame(self.active_symbols_frame, fg_color="transparent")
+            row = ctk.CTkFrame(self.master_list_frame, fg_color="transparent")
             row.pack(fill="x", padx=10, pady=2)
             
             ctk.CTkLabel(row, text=sym, font=ctk.CTkFont(weight="bold")).pack(side="left")
@@ -138,13 +155,15 @@ class ExnessDashboard(ctk.CTk):
             settings.update_setting("SYMBOLS", ",".join(settings.SYMBOLS), list)
             
         self.symbol_entry.delete(0, 'end')
-        self._refresh_symbol_list()
+        self._refresh_master_list()
+        self._refresh_checkboxes()
         
     def remove_symbol(self, sym):
         if sym in settings.SYMBOLS:
             settings.SYMBOLS.remove(sym)
             settings.update_setting("SYMBOLS", ",".join(settings.SYMBOLS), list)
-            self._refresh_symbol_list()
+            self._refresh_master_list()
+            self._refresh_checkboxes()
 
     def _make_input_row(self, label_text, default_val):
         frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
