@@ -251,7 +251,7 @@ class ExnessDashboard(ctk.CTk):
     def refresh_analytics(self):
         if not MATPLOTLIB_AVAILABLE: return
         
-        connector, _ = self.data_cb()
+        connector, _, _ = self.data_cb()
         if not connector or not connector.connected: return
         
         self.refresh_btn.configure(text="Loading...", state="disabled")
