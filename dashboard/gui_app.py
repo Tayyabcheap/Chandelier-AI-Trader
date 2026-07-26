@@ -351,22 +351,6 @@ class ExnessDashboard(ctk.CTk):
             return
         
         df = pd.DataFrame(deals)
-        
-    def _zero_analytics_ui(self):
-        # Update KPI labels to zero/defaults
-        zero_kpis = {
-            "total_pnl": "$0.00", "win_rate": "0%", "total_trades": "0", 
-            "profit_factor": "0.0", "avg_win": "$0.00", "avg_loss": "$0.00",
-            "max_dd": "0%", "sharpe": "0.0"
-        }
-        for key, val in zero_kpis.items():
-            if key in self.kpi_labels:
-                self.kpi_labels[key].configure(text=val, text_color="gray50")
-        
-        # Clear the canvas if it exists
-        if self.canvas_widget:
-            self.canvas_widget.destroy()
-            self.canvas_widget = None
         df = df.sort_values("time").reset_index(drop=True)
         df["cumulative_profit"] = df["profit"].cumsum()
         df["win"] = df["profit"] > 0
@@ -408,6 +392,22 @@ class ExnessDashboard(ctk.CTk):
         }
         
         self.after(0, self._render_graph, df, drawdown, kpi_data)
+
+    def _zero_analytics_ui(self):
+        # Update KPI labels to zero/defaults
+        zero_kpis = {
+            "total_pnl": "$0.00", "win_rate": "0%", "total_trades": "0", 
+            "profit_factor": "0.0", "avg_win": "$0.00", "avg_loss": "$0.00",
+            "max_dd": "0%", "sharpe": "0.0"
+        }
+        for key, val in zero_kpis.items():
+            if key in self.kpi_labels:
+                self.kpi_labels[key].configure(text=val, text_color="gray50")
+        
+        # Clear the canvas if it exists
+        if self.canvas_widget:
+            self.canvas_widget.destroy()
+            self.canvas_widget = None
 
     def _refresh_trade_history(self, df):
         tab = self.tabs.tab("📜 Trade History")
