@@ -206,7 +206,7 @@ class ExnessDiscordBot(discord.Client):
         return embed
 
 
-def run_discord_bot(connector, settings):
+def run_discord_bot(connector, settings, watchdog=None):
     if not settings.DISCORD_BOT_TOKEN:
         logger.warning("No DISCORD_BOT_TOKEN found. Interactive bot is disabled.")
         return
@@ -275,6 +275,36 @@ def run_discord_bot(connector, settings):
         # Open the modal popup form
         modal = TradeModal(bot.connector)
         await interaction.response.send_modal(modal)
+        
+    @bot.tree.command(name="watchdog", description="Add a conditional order that executes strictly on candle close.")
+    @app_commands.describe(
+        symbol="Currency pair (e.g. XAUUSDc)",
+        side="BUY or SELL",
+        condition="ABOVE or BELOW",
+        trigger_price="Price to trigger the trade",
+        sl="Stop Loss",
+        tp="Take Profit",
+        lot="Lot size"
+    )
+    async def watchdog_cmd(interaction: discord.Interaction, symbol: str, side: str, condition: str, trigger_price: float, sl: float, tp: float, lot: float = 0.01):
+        if not watchdog:
+            await interaction.response.send_message("❌ Watchdog Engine is offline.", ephemeral=True)
+            return
+            
+        try:
+            sit_id = watchdog.add_situation(
+                symbol.strip(), 
+                side.upper(), 
+                condition.upper(), 
+                trigger_price, 
+                sl, 
+                tp, 
+                lot
+            )
+            msg = f"🎯 **Watchdog Activated!**\n`[#{sit_id}]` **{side.upper()} {symbol.upper()}** if price closes **{condition.upper()} {trigger_price}**\n*SL: {sl} | TP: {tp} | Lot: {lot}*"
+            await interaction.response.send_message(msg)
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Failed to add condition: {e}", ephemeral=True)
 
     try:
         # Create a new event loop for this thread

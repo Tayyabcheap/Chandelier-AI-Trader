@@ -53,6 +53,7 @@ from strategy.session_filter import SessionFilter
 from strategy.gemini_advisor import GeminiAdvisor
 from risk.risk_manager import RiskManager
 from risk.news_filter import NewsFilter
+from strategy.situations import SituationsEngine
 from execution.executor import TradeExecutor
 from execution.discord_notifier import DiscordNotifier
 from dashboard.terminal_dashboard import render
@@ -63,6 +64,7 @@ signals = {}
 connector = None
 executor  = None
 risk_mgr  = None
+watchdog  = None
 
 
 def graceful_shutdown(sig=None, frame=None):
@@ -90,7 +92,7 @@ def close_all_open_trades():
         connector.close_position(ticket)
     print("All positions closed.")
 
-def trading_cycle(conn, engine, risk_mgr, exec_, news_filter):
+def trading_cycle(conn, engine, risk_mgr, exec_, news_filter, watchdog):
     global signals
     
     # ── Weekend Hibernation Check ──
@@ -118,6 +120,10 @@ def trading_cycle(conn, engine, risk_mgr, exec_, news_filter):
                 logger.warning(f"[{symbol}] Not enough data")
                 continue
 
+            # Check Conditional Watchdog on closed candle (index -2 is the last fully formed candle)
+            closed_candle_price = df.iloc[-2]["close"]
+            watchdog.evaluate_candle_close(symbol, closed_candle_price)
+
             # Generate signal (all 6 layers run inside engine.analyze)
             sig = engine.analyze(df, symbol)
             signals[symbol] = sig
@@ -133,7 +139,7 @@ def trading_cycle(conn, engine, risk_mgr, exec_, news_filter):
 
 
 def main():
-    global connector, executor, risk_mgr
+    global connector, executor, risk_mgr, watchdog
 
     print("\n" + "="*60)
     print("  * Exness AutoTrader v2.0 - Next-Gen AI-Powered")
@@ -158,11 +164,9 @@ def main():
     if not connector.connect():
         sys.exit(1)
 
-    # Start Discord Interactive Bot in background
-    from execution.discord_bot import run_discord_bot
+    # Start Discord Interactive Bot in background (Moved down to pass watchdog)
     import threading
-    discord_thread = threading.Thread(target=run_discord_bot, args=(connector, settings), daemon=True)
-    discord_thread.start()
+    from execution.discord_bot import run_discord_bot
 
     # -- Init all components -----------------------------------------------
 
@@ -213,6 +217,10 @@ def main():
     executor    = TradeExecutor(settings, connector, risk_mgr,
                                 notifier=None,
                                 discord=discord)
+    watchdog = SituationsEngine(connector)
+    
+    discord_thread = threading.Thread(target=run_discord_bot, args=(connector, settings, watchdog), daemon=True)
+    discord_thread.start()
 
     risk_mgr.initialize_day()
     account = connector.get_account_info()
@@ -231,7 +239,7 @@ def main():
 
     # -- Schedules ---------------------------------------------------------
     schedule.every(1).minutes.do(
-        trading_cycle, connector, engine, risk_mgr, executor, news_filter
+        trading_cycle, connector, engine, risk_mgr, executor, news_filter, watchdog
     )
     schedule.every(1).minutes.do(risk_mgr.update_trailing_stops)
     schedule.every().day.at("00:01").do(risk_mgr.initialize_day)
@@ -244,7 +252,7 @@ def main():
     )
 
     # First cycle immediately
-    trading_cycle(connector, engine, risk_mgr, executor, news_filter)
+    trading_cycle(connector, engine, risk_mgr, executor, news_filter, watchdog)
 
     # Main loop (Run in background thread by GUI)
     while running:
@@ -266,8 +274,8 @@ def stop_bot_thread():
 
 def get_gui_data():
     """Returns live connector, signals, and risk_mgr for the GUI to poll."""
-    global connector, signals, risk_mgr
-    return connector, signals, risk_mgr
+    global connector, signals, risk_mgr, watchdog
+    return connector, signals, risk_mgr, watchdog
 
 if __name__ == "__main__":
     # Import here to avoid circular imports during startup

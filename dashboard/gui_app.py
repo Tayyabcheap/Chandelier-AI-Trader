@@ -142,7 +142,7 @@ class ExnessDashboard(ctk.CTk):
         if not sym: return
         
         # Validate with MT5
-        connector, _, _ = self.data_cb()
+        connector, _, _, _ = self.data_cb()
         if connector and connector.connected:
             info = connector.get_symbol_info(sym)
             if not info:
@@ -205,9 +205,14 @@ class ExnessDashboard(ctk.CTk):
         self.tabs.add("Performance Analytics")
         self.tabs.add("Latest AI Scan")
         self.tabs.add("📜 Trade History")
+        self.tabs.add("🎯 Watchdog")
         
         self.tab_analytics = self.tabs.tab("Performance Analytics")
         self.tab_inspector = self.tabs.tab("Latest AI Scan")
+        self.tab_watchdog = self.tabs.tab("🎯 Watchdog")
+        
+        self._build_watchdog_tab()
+        
         self.inspect_content = ctk.CTkTextbox(self.tab_inspector, font=("Consolas", 14), wrap="word", fg_color="transparent")
         self.inspect_content.pack(fill="both", expand=True, padx=10, pady=10)
         self.inspect_content.insert("0.0", "Click 'Inspect Logic' on a trade to see the LATEST market scan for that pair.\n\nNote: This shows the CURRENT live AI reasoning, not the historical reasoning from when the trade was opened.")
@@ -247,11 +252,60 @@ class ExnessDashboard(ctk.CTk):
             self.refresh_btn.pack(pady=(5, 5))
             self.canvas_widget = None
 
+    def _build_watchdog_tab(self):
+        # Top input row
+        input_frame = ctk.CTkFrame(self.tab_watchdog, fg_color="transparent")
+        input_frame.pack(fill="x", padx=10, pady=(10, 5))
+        
+        self.wd_sym = ctk.CTkEntry(input_frame, placeholder_text="Symbol", width=80)
+        self.wd_sym.pack(side="left", padx=2)
+        
+        self.wd_side = ctk.CTkOptionMenu(input_frame, values=["BUY", "SELL"], width=70)
+        self.wd_side.pack(side="left", padx=2)
+        
+        self.wd_cond = ctk.CTkOptionMenu(input_frame, values=["ABOVE", "BELOW"], width=80)
+        self.wd_cond.pack(side="left", padx=2)
+        
+        self.wd_trig = ctk.CTkEntry(input_frame, placeholder_text="Trigger Price", width=100)
+        self.wd_trig.pack(side="left", padx=2)
+        
+        self.wd_sl = ctk.CTkEntry(input_frame, placeholder_text="Stop Loss", width=80)
+        self.wd_sl.pack(side="left", padx=2)
+        
+        self.wd_tp = ctk.CTkEntry(input_frame, placeholder_text="Take Profit", width=80)
+        self.wd_tp.pack(side="left", padx=2)
+        
+        self.wd_lot = ctk.CTkEntry(input_frame, placeholder_text="Lot", width=50)
+        self.wd_lot.pack(side="left", padx=2)
+        
+        add_btn = ctk.CTkButton(input_frame, text="Add", width=50, command=self.add_watchdog)
+        add_btn.pack(side="left", padx=(10, 0))
+        
+        # Grid frame
+        self.wd_scroll = ctk.CTkScrollableFrame(self.tab_watchdog, fg_color="transparent")
+        self.wd_scroll.pack(fill="both", expand=True, pady=10)
+
+    def add_watchdog(self):
+        connector, _, _, watchdog = self.data_cb()
+        if watchdog:
+            try:
+                watchdog.add_situation(
+                    self.wd_sym.get(),
+                    self.wd_side.get(),
+                    self.wd_cond.get(),
+                    float(self.wd_trig.get()),
+                    float(self.wd_sl.get()),
+                    float(self.wd_tp.get()),
+                    float(self.wd_lot.get() or "0.01")
+                )
+            except Exception as e:
+                print(f"Watchdog add error: {e}")
+
     # ── Analytics Logic ───────────────────────────────────────────────────
     def refresh_analytics(self):
         if not MATPLOTLIB_AVAILABLE: return
         
-        connector, _, _ = self.data_cb()
+        connector, _, _, _ = self.data_cb()
         if not connector or not connector.connected: return
         
         self.refresh_btn.configure(text="Loading...", state="disabled")
@@ -479,7 +533,7 @@ class ExnessDashboard(ctk.CTk):
     # ── Polling & Trade Cards ─────────────────────────────────────────────
     def poll_live_data(self):
         if self.bot_running and self.data_cb:
-            connector, signals, risk_mgr = self.data_cb()
+            connector, signals, risk_mgr, watchdog = self.data_cb()
             if connector and connector.connected:
                 # Update live account balance
                 info = connector.get_account_info()
@@ -494,8 +548,45 @@ class ExnessDashboard(ctk.CTk):
 
                 positions = connector.get_open_positions()
                 self._refresh_trade_cards(positions, signals, connector)
+                
+                if watchdog:
+                    watchdog.evaluate_live_prices()
+                    self._refresh_watchdog_list(watchdog)
         
         self.after(2000, self.poll_live_data)
+
+    def _refresh_watchdog_list(self, watchdog):
+        if self.tabs.get() != "🎯 Watchdog":
+            return # Save CPU if tab not active
+            
+        for widget in self.wd_scroll.winfo_children():
+            widget.destroy()
+            
+        situations = watchdog.get_all()
+        if not situations:
+            ctk.CTkLabel(self.wd_scroll, text="No active situations.", text_color="gray50").pack(pady=50)
+            return
+            
+        for sit in situations:
+            card = ctk.CTkFrame(self.wd_scroll, corner_radius=5, fg_color="gray15")
+            card.pack(fill="x", pady=5)
+            
+            top = ctk.CTkFrame(card, fg_color="transparent")
+            top.pack(fill="x", padx=10, pady=(5,0))
+            
+            ctk.CTkLabel(top, text=f"#{sit.id} | {sit.side} {sit.symbol} {sit.condition} {sit.trigger_price}", font=ctk.CTkFont(weight="bold")).pack(side="left")
+            
+            filled = int(sit.dist_pct / 10)
+            bar_str = f"Dist: [{'|'*filled}{' '*(10-filled)}]"
+            color = "#2ECC71" if sit.exec_status == "Very Close" else ("#F1C40F" if sit.exec_status == "Hopeful" else "#E74C3C")
+            
+            bot = ctk.CTkFrame(card, fg_color="transparent")
+            bot.pack(fill="x", padx=10, pady=(0,5))
+            
+            ctk.CTkLabel(bot, text=f"SL: {sit.sl} | TP: {sit.tp} | {bar_str} | Exec: {sit.exec_status}", text_color=color).pack(side="left")
+            
+            del_btn = ctk.CTkButton(top, text="❌", width=30, fg_color="#E74C3C", hover_color="#C0392B", command=lambda i=sit.id: watchdog.remove_situation(i))
+            del_btn.pack(side="right")
 
     def _refresh_trade_cards(self, positions, signals, connector):
         for widget in self.cards_frame.winfo_children():
@@ -533,13 +624,17 @@ class ExnessDashboard(ctk.CTk):
             pip_str = f"{pips:+.1f} pips"
             pip_color = "#2ECC71" if pips >= 0 else "#E74C3C"
             
+            magic = pos.get("magic", 0)
+            tag = "[🤖 CE BOT]" if magic == 20240101 else "[🖐 MANUAL]"
+            tag_color = "#3498DB" if magic == 20240101 else "#F39C12"
+            
             card = ctk.CTkFrame(self.cards_frame, corner_radius=8, fg_color="gray15")
             card.pack(fill="x", pady=10)
             
             top_row = ctk.CTkFrame(card, fg_color="transparent")
             top_row.pack(fill="x", padx=15, pady=(15, 5))
             
-            ctk.CTkLabel(top_row, text=f"{typ} {sym}", font=ctk.CTkFont(size=18, weight="bold")).pack(side="left")
+            ctk.CTkLabel(top_row, text=f"{tag} {typ} {sym}", font=ctk.CTkFont(size=18, weight="bold"), text_color=tag_color).pack(side="left")
             ctk.CTkLabel(top_row, text=f"${profit:.2f}", font=ctk.CTkFont(size=18, weight="bold"), text_color=color).pack(side="right")
             
             btm_row = ctk.CTkFrame(card, fg_color="transparent")
@@ -563,7 +658,7 @@ class ExnessDashboard(ctk.CTk):
         self.inspect_content.configure(state="normal")
         self.inspect_content.delete("0.0", "end")
         
-        connector, _, _ = self.data_cb()
+        connector, _, _, _ = self.data_cb()
         # Find the active position for this symbol to get exact SL/TP dollar values
         positions = connector.get_open_positions() if connector else []
         sym_pos = [p for p in positions if p["symbol"] == symbol]
@@ -608,7 +703,7 @@ class ExnessDashboard(ctk.CTk):
 
     # ── User Actions ──────────────────────────────────────────────────────
     def close_single_trade(self, ticket):
-        connector, _, _ = self.data_cb()
+        connector, _, _, _ = self.data_cb()
         if connector:
             print(f"Force closing ticket #{ticket} from GUI...")
             threading.Thread(target=connector.close_position, args=(ticket,), daemon=True).start()
