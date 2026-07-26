@@ -79,13 +79,7 @@ class RiskManager:
         pnl = self.update_pnl()
         s   = self.settings
 
-        if pnl >= s.DAILY_PROFIT_TARGET_PCT:
-            reason = f"Daily target reached: +{pnl:.2f}% (Limit: {s.DAILY_PROFIT_TARGET_PCT}%)"
-            return False, reason
-
-        if pnl <= -s.DAILY_LOSS_LIMIT_PCT:
-            reason = f"Daily loss limit hit: {pnl:.2f}% (Limit: -{s.DAILY_LOSS_LIMIT_PCT}%)"
-            return False, reason
+        # Hibernation logic removed by user request
 
         open_pos = self.connector.get_open_positions()
         
