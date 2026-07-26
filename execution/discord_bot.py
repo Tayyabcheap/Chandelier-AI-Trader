@@ -141,10 +141,66 @@ class TradeModal(discord.ui.Modal, title='Manual Trade Entry'):
         except ValueError as e:
             await interaction.response.send_message(f"❌ Input Error: Make sure SL, TP, and Lot are valid numbers. ({e})", ephemeral=True)
         except Exception as e:
-            if not interaction.response.is_done():
-                await interaction.response.send_message(f"❌ Error: {e}", ephemeral=True)
-            else:
-                await interaction.followup.send(f"❌ Error: {e}")
+            logger.error(f"Manual trade entry failed: {e}")
+            await interaction.followup.send(f"❌ Error placing manual trade: {e}")
+
+class WatchdogModal(discord.ui.Modal, title='Conditional Watchdog Setup'):
+    symbol = discord.ui.TextInput(
+        label='Symbol (e.g., XAUUSDc)',
+        placeholder='XAUUSDc',
+        required=True
+    )
+    side_cond = discord.ui.TextInput(
+        label='Side & Condition (e.g., BUY ABOVE)',
+        placeholder='BUY ABOVE or SELL BELOW',
+        required=True
+    )
+    trigger = discord.ui.TextInput(
+        label='Trigger Price',
+        placeholder='e.g., 2400.50',
+        required=True
+    )
+    sl_tp = discord.ui.TextInput(
+        label='Stop Loss, Take Profit (comma separated)',
+        placeholder='e.g., 2390, 2420',
+        required=True
+    )
+    lot = discord.ui.TextInput(
+        label='Lot Size',
+        default='0.01',
+        required=True
+    )
+
+    def __init__(self, watchdog):
+        super().__init__()
+        self.watchdog = watchdog
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if not self.watchdog:
+            await interaction.response.send_message("❌ Watchdog Engine is offline.", ephemeral=True)
+            return
+            
+        sym = self.symbol.value.strip().upper()
+        side_cond_parts = self.side_cond.value.strip().upper().split()
+        if len(side_cond_parts) != 2:
+            await interaction.response.send_message("❌ Side & Condition must be two words, e.g., 'BUY ABOVE'.", ephemeral=True)
+            return
+        side, cond = side_cond_parts
+        
+        try:
+            trig_val = float(self.trigger.value.strip())
+            sl_tp_parts = [x.strip() for x in self.sl_tp.value.split(",")]
+            sl_val = float(sl_tp_parts[0])
+            tp_val = float(sl_tp_parts[1]) if len(sl_tp_parts) > 1 else 0.0
+            lot_val = float(self.lot.value.strip())
+            
+            sit_id = self.watchdog.add_situation(sym, side, cond, trig_val, sl_val, tp_val, lot_val)
+            
+            msg = f"🎯 **Watchdog Activated via UI!**\n`[#{sit_id}]` **{side} {sym}** if price closes **{cond} {trig_val}**\n*SL: {sl_val} | TP: {tp_val} | Lot: {lot_val}*"
+            await interaction.response.send_message(msg)
+            
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Failed to parse Watchdog inputs: {e}", ephemeral=True)
 
 
 class ExnessDiscordBot(discord.Client):
@@ -276,35 +332,13 @@ def run_discord_bot(connector, settings, watchdog=None):
         modal = TradeModal(bot.connector)
         await interaction.response.send_modal(modal)
         
-    @bot.tree.command(name="watchdog", description="Add a conditional order that executes strictly on candle close.")
-    @app_commands.describe(
-        symbol="Currency pair (e.g. XAUUSDc)",
-        side="BUY or SELL",
-        condition="ABOVE or BELOW",
-        trigger_price="Price to trigger the trade",
-        sl="Stop Loss",
-        tp="Take Profit",
-        lot="Lot size"
-    )
-    async def watchdog_cmd(interaction: discord.Interaction, symbol: str, side: str, condition: str, trigger_price: float, sl: float, tp: float, lot: float = 0.01):
+    @bot.tree.command(name="watchdog", description="Open the Interactive Watchdog UI to add a conditional order.")
+    async def watchdog_cmd(interaction: discord.Interaction):
         if not watchdog:
             await interaction.response.send_message("❌ Watchdog Engine is offline.", ephemeral=True)
             return
-            
-        try:
-            sit_id = watchdog.add_situation(
-                symbol.strip(), 
-                side.upper(), 
-                condition.upper(), 
-                trigger_price, 
-                sl, 
-                tp, 
-                lot
-            )
-            msg = f"🎯 **Watchdog Activated!**\n`[#{sit_id}]` **{side.upper()} {symbol.upper()}** if price closes **{condition.upper()} {trigger_price}**\n*SL: {sl} | TP: {tp} | Lot: {lot}*"
-            await interaction.response.send_message(msg)
-        except Exception as e:
-            await interaction.response.send_message(f"❌ Failed to add condition: {e}", ephemeral=True)
+        modal = WatchdogModal(watchdog)
+        await interaction.response.send_modal(modal)
 
     try:
         # Create a new event loop for this thread

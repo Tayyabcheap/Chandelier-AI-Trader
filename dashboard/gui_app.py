@@ -625,8 +625,17 @@ class ExnessDashboard(ctk.CTk):
             pip_color = "#2ECC71" if pips >= 0 else "#E74C3C"
             
             magic = pos.get("magic", 0)
-            tag = "[🤖 CE BOT]" if magic == 20240101 else "[🖐 MANUAL]"
-            tag_color = "#3498DB" if magic == 20240101 else "#F39C12"
+            comment = pos.get("comment", "")
+            
+            if comment.startswith("Watchdog"):
+                tag = "[🎯 WATCHDOG]"
+                tag_color = "#9B59B6" # Purple
+            elif magic == 20240101:
+                tag = "[🤖 CE BOT]"
+                tag_color = "#3498DB" # Blue
+            else:
+                tag = "[🖐 MANUAL]"
+                tag_color = "#F39C12" # Orange
             
             card = ctk.CTkFrame(self.cards_frame, corner_radius=8, fg_color="gray15")
             card.pack(fill="x", pady=10)
