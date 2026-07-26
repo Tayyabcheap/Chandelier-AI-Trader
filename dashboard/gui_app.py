@@ -7,6 +7,7 @@ import customtkinter as ctk
 import threading
 import sys
 import time
+import tkinter as tk
 import numpy as np
 import pandas as pd
 from config.settings import settings
@@ -37,15 +38,18 @@ class ExnessDashboard(ctk.CTk):
         self.title("Exness Pro Terminal v3.5 - Analytics Edition")
         self.geometry("1400x850")
 
-        # 3-Pane Grid layout
-        self.grid_columnconfigure(0, weight=0, minsize=320) # Left Settings
-        self.grid_columnconfigure(1, weight=1)              # Center Active Trades
-        self.grid_columnconfigure(2, weight=1)              # Right Tabs
-        self.grid_rowconfigure(0, weight=1)
+        # 3-Pane Resizable IDE Layout
+        self.paned_window = tk.PanedWindow(self, orient=tk.HORIZONTAL, bg="#1e1e2e", sashwidth=8, borderwidth=0, sashrelief=tk.FLAT)
+        self.paned_window.pack(fill=tk.BOTH, expand=True)
 
         self._build_left_panel()
         self._build_center_panel()
         self._build_right_panel()
+        
+        # Add to paned window instead of grid
+        self.paned_window.add(self.sidebar, minsize=320)
+        self.paned_window.add(self.center_frame, minsize=400)
+        self.paned_window.add(self.right_frame, minsize=400)
 
         # Start background poller
         self.after(2000, self.poll_live_data)
@@ -56,7 +60,6 @@ class ExnessDashboard(ctk.CTk):
     # ── Left Panel (Settings & Symbols) ───────────────────────────────────
     def _build_left_panel(self):
         self.sidebar = ctk.CTkScrollableFrame(self, width=320, corner_radius=0)
-        self.sidebar.grid(row=0, column=0, sticky="nsew")
         
         # Logo
         logo = ctk.CTkLabel(self.sidebar, text="PRO TERMINAL", font=ctk.CTkFont(size=24, weight="bold"))
@@ -177,7 +180,6 @@ class ExnessDashboard(ctk.CTk):
     # ── Center Panel (Active Trades) ──────────────────────────────────────
     def _build_center_panel(self):
         self.center_frame = ctk.CTkFrame(self, fg_color="gray10", corner_radius=0)
-        self.center_frame.grid(row=0, column=1, sticky="nsew", padx=2, pady=0)
         
         header = ctk.CTkLabel(self.center_frame, text="Active Positions", font=ctk.CTkFont(size=20, weight="bold"))
         header.pack(pady=(20, 5))
@@ -197,7 +199,6 @@ class ExnessDashboard(ctk.CTk):
     # ── Right Panel (Inspector & Analytics Tabs) ──────────────────────────
     def _build_right_panel(self):
         self.right_frame = ctk.CTkFrame(self, fg_color="gray12", corner_radius=0)
-        self.right_frame.grid(row=0, column=2, sticky="nsew")
 
         self.tabs = ctk.CTkTabview(self.right_frame)
         self.tabs.pack(fill="both", expand=True, padx=10, pady=10)
@@ -219,6 +220,14 @@ class ExnessDashboard(ctk.CTk):
         self.inspect_content.configure(state="disabled")
 
         # --- Analytics Tab ---
+        self.analytics_filter = ctk.CTkSegmentedButton(
+            self.tab_analytics, 
+            values=["Overall", "CE Bot", "Watchdog", "Manual"],
+            command=self.refresh_analytics
+        )
+        self.analytics_filter.pack(fill="x", pady=(0, 10))
+        self.analytics_filter.set("Overall")
+
         self.analytics_scroll = ctk.CTkScrollableFrame(self.tab_analytics, fg_color="transparent")
         self.analytics_scroll.pack(fill="both", expand=True)
 
@@ -302,22 +311,60 @@ class ExnessDashboard(ctk.CTk):
                 print(f"Watchdog add error: {e}")
 
     # ── Analytics Logic ───────────────────────────────────────────────────
-    def refresh_analytics(self):
+    def refresh_analytics(self, filter_type=None):
         if not MATPLOTLIB_AVAILABLE: return
         
         connector, _, _, _ = self.data_cb()
         if not connector or not connector.connected: return
         
         self.refresh_btn.configure(text="Loading...", state="disabled")
-        threading.Thread(target=self._plot_analytics_thread, args=(connector,), daemon=True).start()
+        selected_filter = self.analytics_filter.get() if hasattr(self, 'analytics_filter') else "Overall"
+        threading.Thread(target=self._plot_analytics_thread, args=(connector, selected_filter), daemon=True).start()
 
-    def _plot_analytics_thread(self, connector):
+    def _plot_analytics_thread(self, connector, filter_type="Overall"):
         deals = connector.get_all_closed_deals(days=30)
+        
+        filtered_deals = []
+        if deals:
+            for d in deals:
+                magic = d.get("magic", 0)
+                comment = d.get("comment", "")
+                if filter_type == "CE Bot":
+                    if magic == 20240101 and not comment.startswith("Watchdog"):
+                        filtered_deals.append(d)
+                elif filter_type == "Watchdog":
+                    if comment.startswith("Watchdog"):
+                        filtered_deals.append(d)
+                elif filter_type == "Manual":
+                    if magic != 20240101:
+                        filtered_deals.append(d)
+                else:
+                    filtered_deals.append(d)
+                    
+        deals = filtered_deals
+        
         if not deals:
             self.after(0, lambda: self.refresh_btn.configure(text="⟳ Refresh Analytics", state="normal"))
+            self.after(0, self._zero_analytics_ui)
             return
         
         df = pd.DataFrame(deals)
+        
+    def _zero_analytics_ui(self):
+        # Update KPI labels to zero/defaults
+        zero_kpis = {
+            "total_pnl": "$0.00", "win_rate": "0%", "total_trades": "0", 
+            "profit_factor": "0.0", "avg_win": "$0.00", "avg_loss": "$0.00",
+            "max_dd": "0%", "sharpe": "0.0"
+        }
+        for key, val in zero_kpis.items():
+            if key in self.kpi_labels:
+                self.kpi_labels[key].configure(text=val, text_color="gray50")
+        
+        # Clear the canvas if it exists
+        if self.canvas_widget:
+            self.canvas_widget.destroy()
+            self.canvas_widget = None
         df = df.sort_values("time").reset_index(drop=True)
         df["cumulative_profit"] = df["profit"].cumsum()
         df["win"] = df["profit"] > 0
