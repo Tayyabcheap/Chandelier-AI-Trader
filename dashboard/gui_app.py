@@ -47,7 +47,7 @@ class ExnessDashboard(ctk.CTk):
         self._build_right_panel()
         
         # Add to paned window instead of grid
-        self.paned_window.add(self.sidebar, minsize=320)
+        self.paned_window.add(self.left_master, minsize=320)
         self.paned_window.add(self.center_frame, minsize=400)
         self.paned_window.add(self.right_frame, minsize=400)
 
@@ -59,7 +59,9 @@ class ExnessDashboard(ctk.CTk):
 
     # ── Left Panel (Settings & Symbols) ───────────────────────────────────
     def _build_left_panel(self):
-        self.sidebar = ctk.CTkScrollableFrame(self, width=320, corner_radius=0)
+        self.left_master = ctk.CTkFrame(self, fg_color="transparent", corner_radius=0)
+        self.sidebar = ctk.CTkScrollableFrame(self.left_master, width=320, corner_radius=0)
+        self.sidebar.pack(fill="both", expand=True)
         
         # Logo
         logo = ctk.CTkLabel(self.sidebar, text="PRO TERMINAL", font=ctk.CTkFont(size=24, weight="bold"))
